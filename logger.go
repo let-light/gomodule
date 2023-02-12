@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/let-light/neon/pkg/utils"
+	"github.com/let-light/goutils"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -73,7 +73,7 @@ func (l *LoggerModule) OnPostInitCommand() {
 	}
 	logrus.SetLevel(level)
 
-	fd, err := utils.CreateDirFile(l.settings.File)
+	fd, err := goutils.CreateDirFile(l.settings.File)
 	if err != nil {
 		panic(err)
 	}
