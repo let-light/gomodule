@@ -1,4 +1,4 @@
-package module
+package gomodule
 
 import (
 	"io"
@@ -54,7 +54,7 @@ func (l *LoggerModule) OnConfigModified() {
 }
 
 func (l *LoggerModule) OnPostInitCommand() {
-	if strings.ToLower(l.settings.Formatter) == strings.ToLower("text") {
+	if strings.EqualFold(l.settings.Formatter, "text") {
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp:   true,
 			ForceColors:     true,
