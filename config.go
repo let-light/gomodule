@@ -38,7 +38,7 @@ func (c *ConfigModule) OnInitModule() (interface{}, error) {
 }
 
 func (c *ConfigModule) OnInitCommand() ([]*cobra.Command, error) {
-	GetRootCmd().PersistentFlags().StringVarP(&c.flags.ConfigFile, "config", "c", "config/neon.yaml", "Load config file")
+	GetRootCmd().PersistentFlags().StringVarP(&c.flags.ConfigFile, "config", "c", "config.yaml", "Load config file")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "consul", "", "Load config file from consul")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "etcd", "", "Load config file from etcd")
 
@@ -66,10 +66,6 @@ func (c *ConfigModule) OnPostInitCommand() {
 }
 
 func (c *ConfigModule) loadConfigFromFile() {
-	if c.flags.ConfigFile == "" {
-		c.flags.ConfigFile = gfile.SelfDir() + "config.yaml"
-	}
-
 	if !gfile.Exists(c.flags.ConfigFile) {
 		panic(fmt.Errorf("fatal error config file, %s not found", c.flags.ConfigFile))
 	}
