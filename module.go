@@ -22,6 +22,7 @@ type Manager struct {
 	modules []*ModuleInfo
 	rootCmd *cobra.Command
 	once    sync.Once
+	ctx     context.Context
 }
 
 type IModule interface {
@@ -136,4 +137,8 @@ func reloadSettings() {
 			panic(fmt.Errorf("unmarshal config error, %s", err))
 		}
 	}
+}
+
+func Wait() {
+	<-manager.ctx.Done()
 }
