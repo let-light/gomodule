@@ -3,6 +3,7 @@ package gomodule
 import (
 	"fmt"
 
+	"github.com/gogf/gf/os/gfile"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -65,6 +66,14 @@ func (c *ConfigModule) OnPostInitCommand() {
 }
 
 func (c *ConfigModule) loadConfigFromFile() {
+	if c.flags.ConfigFile == "" {
+		c.flags.ConfigFile = gfile.SelfDir() + "config.yaml"
+	}
+
+	if !gfile.Exists(c.flags.ConfigFile) {
+		panic(fmt.Errorf("fatal error config file, %s not found", c.flags.ConfigFile))
+	}
+
 	c.config = viper.New()
 	c.config.SetConfigFile(c.flags.ConfigFile)
 	err := c.config.ReadInConfig()
