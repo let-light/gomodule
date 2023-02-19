@@ -1,6 +1,7 @@
 package gomodule
 
 import (
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -37,7 +38,7 @@ func LoggerModuleInstance() IModule {
 	return instance
 }
 
-func (l *LoggerModule) OnInitModule() (interface{}, error) {
+func (l *LoggerModule) OnInitModule(ctx context.Context) (interface{}, error) {
 	return l.settings, nil
 }
 

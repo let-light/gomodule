@@ -1,6 +1,7 @@
 package gomodule
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -24,7 +25,7 @@ type Manager struct {
 }
 
 type IModule interface {
-	OnInitModule() (interface{}, error)
+	OnInitModule(ctx context.Context) (interface{}, error)
 	OnInitCommand() ([]*cobra.Command, error)
 	OnConfigModified()
 	OnPostInitCommand()
@@ -90,12 +91,12 @@ func Register(module IModule) error {
 	return nil
 }
 
-func Launch() error {
+func Launch(ctx context.Context) error {
 	manager.once.Do(initDefaultModule)
 
 	// init module
 	for _, mi := range manager.modules {
-		settings, err := mi.module.OnInitModule()
+		settings, err := mi.module.OnInitModule(ctx)
 		if err != nil {
 			return err
 		}

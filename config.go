@@ -1,6 +1,7 @@
 package gomodule
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gogf/gf/os/gfile"
@@ -33,7 +34,7 @@ func (c *ConfigModule) Viper() *viper.Viper {
 	return c.config
 }
 
-func (c *ConfigModule) OnInitModule() (interface{}, error) {
+func (c *ConfigModule) OnInitModule(ctx context.Context) (interface{}, error) {
 	return nil, nil
 }
 
