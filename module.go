@@ -94,6 +94,7 @@ func Register(module IModule) error {
 
 func Launch(ctx context.Context) error {
 	manager.once.Do(initDefaultModule)
+	manager.ctx = ctx
 
 	// init module
 	for _, mi := range manager.modules {
