@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/let-light/goutils"
 	"github.com/sirupsen/logrus"
@@ -38,7 +39,8 @@ func LoggerModuleInstance() IModule {
 	return instance
 }
 
-func (l *LoggerModule) OnInitModule(ctx context.Context) (interface{}, error) {
+func (l *LoggerModule) OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+
 	return l.settings, nil
 }
 
@@ -90,5 +92,4 @@ func (l *LoggerModule) OnPostInitCommand() {
 }
 
 func (l *LoggerModule) OnMainRun(cmd *cobra.Command, args []string) {
-
 }

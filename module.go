@@ -23,10 +23,12 @@ type Manager struct {
 	rootCmd *cobra.Command
 	once    sync.Once
 	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      *sync.WaitGroup
 }
 
 type IModule interface {
-	OnInitModule(ctx context.Context) (interface{}, error)
+	OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error)
 	OnInitCommand() ([]*cobra.Command, error)
 	OnConfigModified()
 	OnPostInitCommand()
@@ -42,6 +44,9 @@ func NewManager() *Manager {
 		modules: make([]*ModuleInfo, 0),
 		rootCmd: &cobra.Command{},
 	}
+
+	m.wg = &sync.WaitGroup{}
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	m.rootCmd.Run = func(cmd *cobra.Command, args []string) {
 		for _, mi := range manager.modules {
@@ -93,12 +98,12 @@ func Register(module IModule) error {
 }
 
 func Launch(ctx context.Context) error {
+	manager.ctx, manager.cancel = context.WithCancel(ctx)
 	manager.once.Do(initDefaultModule)
-	manager.ctx = ctx
 
 	// init module
 	for _, mi := range manager.modules {
-		settings, err := mi.module.OnInitModule(ctx)
+		settings, err := mi.module.OnInitModule(ctx, manager.wg)
 		if err != nil {
 			return err
 		}
@@ -141,5 +146,10 @@ func reloadSettings() {
 }
 
 func Wait() {
+	go func() {
+		manager.wg.Wait()
+		manager.cancel()
+	}()
+
 	<-manager.ctx.Done()
 }

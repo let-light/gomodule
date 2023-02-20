@@ -3,6 +3,7 @@ package gomodule
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gogf/gf/os/gfile"
 	"github.com/spf13/cobra"
@@ -20,6 +21,7 @@ type ConfigFlags struct {
 type ConfigModule struct {
 	flags  ConfigFlags
 	config *viper.Viper
+	wg     *sync.WaitGroup
 }
 
 func init() {
@@ -34,7 +36,8 @@ func (c *ConfigModule) Viper() *viper.Viper {
 	return c.config
 }
 
-func (c *ConfigModule) OnInitModule(ctx context.Context) (interface{}, error) {
+func (c *ConfigModule) OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	c.wg = wg
 	return nil, nil
 }
 
