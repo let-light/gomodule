@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var cm *ConfigModule
+var configInstance *configModule
 
 type ConfigFlags struct {
 	ConfigFile string `env:"config" flag:"config"`
@@ -18,58 +18,41 @@ type ConfigFlags struct {
 	Etcd       string `env:"etcd"   flag:"etcd"`
 }
 
-type ConfigModule struct {
+type configModule struct {
 	flags  ConfigFlags
 	config *viper.Viper
 	wg     *sync.WaitGroup
 }
 
 func init() {
-	cm = &ConfigModule{}
+	configInstance = &configModule{}
 }
 
-func ConfigModuleInstance() *ConfigModule {
-	return cm
+func ConfigModule() *configModule {
+	return configInstance
 }
 
-func (c *ConfigModule) Viper() *viper.Viper {
+func (c *configModule) Viper() *viper.Viper {
 	return c.config
 }
 
-func (c *ConfigModule) OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+func (c *configModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 	c.wg = wg
 	return nil, nil
 }
 
-func (c *ConfigModule) OnInitCommand() ([]*cobra.Command, error) {
-	GetRootCmd().PersistentFlags().StringVarP(&c.flags.ConfigFile, "config", "c", "config.yaml", "Load config file")
+func (c *configModule) InitCommand() ([]*cobra.Command, error) {
+	GetRootCmd().PersistentFlags().StringVarP(&c.flags.ConfigFile, "config", "c", "config.yml", "Load config file")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "consul", "", "Load config file from consul")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "etcd", "", "Load config file from etcd")
 
-	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Operation configuration file",
-		Long:  `Operation configuration file.`,
-		Run:   c.run,
-	}
-
-	return []*cobra.Command{cmd}, nil
+	return nil, nil
 }
 
-func (c *ConfigModule) OnConfigModified() {
+func (c *configModule) ConfigChanged() {
 }
 
-func (c *ConfigModule) OnPostInitCommand() {
-	if c.flags.Consul != "" {
-		c.loadConfigFromConsul()
-	} else if c.flags.Etcd != "" {
-		c.loadConfigFromEtcd()
-	} else {
-		c.loadConfigFromFile()
-	}
-}
-
-func (c *ConfigModule) loadConfigFromFile() {
+func (c *configModule) loadConfigFromFile() {
 	if !gfile.Exists(c.flags.ConfigFile) {
 		panic(fmt.Errorf("fatal error config file, %s not found", c.flags.ConfigFile))
 	}
@@ -84,17 +67,31 @@ func (c *ConfigModule) loadConfigFromFile() {
 	reloadSettings()
 }
 
-func (c *ConfigModule) loadConfigFromConsul() {
+func (c *configModule) loadConfigFromConsul() {
 
 }
 
-func (c *ConfigModule) loadConfigFromEtcd() {
+func (c *configModule) loadConfigFromEtcd() {
 }
 
-// ./neon config reload ${config-file} -> reload config file
-// ./neon config init ${output-config-file} -> init config file
-func (c *ConfigModule) run(cmd *cobra.Command, args []string) {
+func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
+	if c.flags.Consul != "" {
+		c.loadConfigFromConsul()
+	} else if c.flags.Etcd != "" {
+		c.loadConfigFromEtcd()
+	} else {
+		c.loadConfigFromFile()
+	}
 }
 
-func (c *ConfigModule) OnMainRun(cmd *cobra.Command, args []string) {
+func reloadSettings() {
+	for _, mi := range manager.modules {
+		if mi == nil || mi.settings == nil {
+			continue
+		}
+
+		if err := ConfigModule().Viper().UnmarshalKey(mi.name, mi.settings); err != nil {
+			panic(fmt.Errorf("unmarshal config error, %s", err))
+		}
+	}
 }

@@ -19,20 +19,20 @@ type ModuleInfo struct {
 }
 
 type Manager struct {
-	modules []*ModuleInfo
-	rootCmd *cobra.Command
-	once    sync.Once
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      *sync.WaitGroup
+	modules        []*ModuleInfo
+	rootCmd        *cobra.Command
+	once           sync.Once
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             *sync.WaitGroup
+	defaultModules []IModule
 }
 
 type IModule interface {
-	OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error)
-	OnInitCommand() ([]*cobra.Command, error)
-	OnConfigModified()
-	OnPostInitCommand()
-	OnMainRun(cmd *cobra.Command, args []string)
+	InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error)
+	InitCommand() ([]*cobra.Command, error)
+	ConfigChanged()
+	RootCommand(cmd *cobra.Command, args []string)
 }
 
 func init() {
@@ -41,8 +41,9 @@ func init() {
 
 func NewManager() *Manager {
 	m := &Manager{
-		modules: make([]*ModuleInfo, 0),
-		rootCmd: &cobra.Command{},
+		modules:        make([]*ModuleInfo, 0),
+		rootCmd:        &cobra.Command{},
+		defaultModules: make([]IModule, 0),
 	}
 
 	m.wg = &sync.WaitGroup{}
@@ -50,16 +51,49 @@ func NewManager() *Manager {
 
 	m.rootCmd.Run = func(cmd *cobra.Command, args []string) {
 		for _, mi := range manager.modules {
-			mi.module.OnMainRun(cmd, args)
+			mi.module.RootCommand(cmd, args)
 		}
 	}
 
 	return m
 }
 
-func initDefaultModule() {
-	Register(ConfigModuleInstance())
-	Register(LoggerModuleInstance())
+func initDefaultModules() {
+	modules := make([]*ModuleInfo, 0)
+	for _, module := range manager.defaultModules {
+		if module == nil {
+			fmt.Printf("module is nil")
+			continue
+		}
+
+		t := reflect.TypeOf(module)
+		if t.Kind() != reflect.Ptr {
+			fmt.Printf("module must be pointer")
+			continue
+		}
+
+		if t.Elem().Kind() != reflect.Struct {
+			fmt.Printf("module must be struct")
+			continue
+		}
+
+		for _, mi := range manager.modules {
+			if mi.module == module {
+				fmt.Printf("module[%p] is existed", module)
+				return
+			}
+		}
+
+		mi := &ModuleInfo{
+			module: module,
+			cmds:   make([]*cobra.Command, 0),
+			name:   t.Elem().Name(),
+		}
+
+		modules = append(modules, mi)
+	}
+
+	manager.modules = append(modules, manager.modules...)
 }
 
 func Register(module IModule) error {
@@ -88,22 +122,22 @@ func Register(module IModule) error {
 		name:   t.Elem().Name(),
 	}
 
-	cobra.OnInitialize(func() {
-		module.OnPostInitCommand()
-	})
-
 	manager.modules = append(manager.modules, mi)
 
 	return nil
 }
 
+func RegisterDefaultModule(modules ...IModule) {
+	manager.defaultModules = append(manager.defaultModules, modules...)
+}
+
 func Launch(ctx context.Context) error {
 	manager.ctx, manager.cancel = context.WithCancel(ctx)
-	manager.once.Do(initDefaultModule)
+	manager.once.Do(initDefaultModules)
 
 	// init module
 	for _, mi := range manager.modules {
-		settings, err := mi.module.OnInitModule(ctx, manager.wg)
+		settings, err := mi.module.InitModule(ctx, manager.wg)
 		if err != nil {
 			return err
 		}
@@ -112,7 +146,7 @@ func Launch(ctx context.Context) error {
 
 	// init command
 	for _, mi := range manager.modules {
-		cmds, err := mi.module.OnInitCommand()
+		cmds, err := mi.module.InitCommand()
 		if err != nil {
 			return err
 		}
@@ -131,18 +165,6 @@ func Launch(ctx context.Context) error {
 
 func GetRootCmd() *cobra.Command {
 	return manager.rootCmd
-}
-
-func reloadSettings() {
-	for _, mi := range manager.modules {
-		if mi == nil || mi.settings == nil {
-			continue
-		}
-
-		if err := ConfigModuleInstance().Viper().UnmarshalKey(mi.name, mi.settings); err != nil {
-			panic(fmt.Errorf("unmarshal config error, %s", err))
-		}
-	}
 }
 
 func Wait() {

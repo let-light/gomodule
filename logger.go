@@ -7,16 +7,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/let-light/goutils"
+	"github.com/let-light/neon/pkg/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 type Fields logrus.Fields
 
-var instance *LoggerModule
+var loggerInstance *loggerModule
 
-type LoggerSettings struct {
+type loggerSettings struct {
 	Formatter    string `mapstructure:"formatter"`
 	Format       string `mapstructure:"format"`
 	File         string `mapstructure:"file"`
@@ -25,26 +25,26 @@ type LoggerSettings struct {
 	ReportCaller bool   `mapstructure:"reportCaller"`
 }
 
-type LoggerModule struct {
-	settings *LoggerSettings
+type loggerModule struct {
+	settings *loggerSettings
 }
 
 func init() {
-	instance = &LoggerModule{
-		settings: &LoggerSettings{},
+	loggerInstance = &loggerModule{
+		settings: &loggerSettings{},
 	}
 }
 
-func LoggerModuleInstance() IModule {
-	return instance
+func LoggerModule() IModule {
+	return loggerInstance
 }
 
-func (l *LoggerModule) OnInitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+func (l *loggerModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 
 	return l.settings, nil
 }
 
-func (l *LoggerModule) OnInitCommand() ([]*cobra.Command, error) {
+func (l *loggerModule) InitCommand() ([]*cobra.Command, error) {
 	// GetRootCmd().PersistentFlags().StringVarP(&l.settings.File, "log", "l", "logs/neon.log", "log file")
 	// GetRootCmd().PersistentFlags().StringVarP(&l.settings.Format, "format", "f", "text", "the format of logger")
 	// GetRootCmd().PersistentFlags().BoolVar(&l.settings.Console, "console", false, "logger enable console output")
@@ -52,11 +52,11 @@ func (l *LoggerModule) OnInitCommand() ([]*cobra.Command, error) {
 	return nil, nil
 }
 
-func (l *LoggerModule) OnConfigModified() {
+func (l *loggerModule) ConfigChanged() {
 
 }
 
-func (l *LoggerModule) OnPostInitCommand() {
+func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
 	if strings.EqualFold(l.settings.Formatter, "text") {
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp:   true,
@@ -76,7 +76,7 @@ func (l *LoggerModule) OnPostInitCommand() {
 	}
 	logrus.SetLevel(level)
 
-	fd, err := goutils.CreateDirFile(l.settings.File)
+	fd, err := utils.CreateDirFile(l.settings.File)
 	if err != nil {
 		panic(err)
 	}
@@ -89,7 +89,4 @@ func (l *LoggerModule) OnPostInitCommand() {
 	}
 
 	logrus.SetOutput(output)
-}
-
-func (l *LoggerModule) OnMainRun(cmd *cobra.Command, args []string) {
 }
