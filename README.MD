@@ -6,59 +6,70 @@ package main
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/let-light/gomodule"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 type MainFlags struct {
 }
 
-type MainSettings struct {
+type Settings struct {
+	Test string `mapstructure:"test"`
 }
 
-type MainModule struct {
+type SimpleModule struct {
 	flags    *MainFlags
-	settings *MainSettings
+	settings *Settings
 	wg       *sync.WaitGroup
 }
 
-var instance *MainModule
+var instance *SimpleModule
 
 func init() {
-	instance = &MainModule{
+	instance = &SimpleModule{
 		flags:    &MainFlags{},
-		settings: &MainSettings{},
+		settings: &Settings{},
 	}
 	gomodule.Register(instance)
 }
 
-func MainModuleInstance() gomodule.IModule {
-	return instance
-}
-
-func (c *MainModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+func (c *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 	c.wg = wg
+	c.wg.Add(1)
+	logrus.Info("init simple module")
 	return c.settings, nil
 }
 
-func (c *MainModule) InitCommand() ([]*cobra.Command, error) {
+func (c *SimpleModule) InitCommand() ([]*cobra.Command, error) {
+	logrus.Info("init command")
 	return nil, nil
 }
 
-func (c *MainModule) ConfigChanged() {
+func (c *SimpleModule) ConfigChanged() {
+	logrus.Info("config changed")
 
 }
 
-func (c *MainModule) CommandRun() {
+func (c *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
+	logrus.Info("root command")
 
-}
+	logrus.Info("settings: ", c.settings.Test)
 
-func (c *MainModule) RootCommand(cmd *cobra.Command, args []string) {
+	go func() {
+		logrus.Info("wait for 5 seconds ...")
+		<-time.After(5 * time.Second)
+		c.wg.Done()
+	}()
 }
 
 func main() {
+	gomodule.RegisterDefaultModule(gomodule.ConfigModule())
+	gomodule.RegisterDefaultModule(gomodule.LoggerModule())
 	gomodule.Launch(context.Background())
 	gomodule.Wait()
 }
+
 ```
