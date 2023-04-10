@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/gogf/gf v1.16.9
-	github.com/let-light/goutils v0.1.2-alpha
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.15.0
