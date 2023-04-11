@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/let-light/gomodule"
+	"github.com/let-light/gomodule/examples/configcenter"
+	_ "github.com/let-light/gomodule/examples/configcenter"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +23,7 @@ type SimpleModule struct {
 	flags    *MainFlags
 	settings *Settings
 	wg       *sync.WaitGroup
+	ctx      context.Context
 }
 
 var instance *SimpleModule
@@ -30,12 +33,11 @@ func init() {
 		flags:    &MainFlags{},
 		settings: &Settings{},
 	}
-	gomodule.Register(instance)
 }
 
 func (c *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 	c.wg = wg
-	c.wg.Add(1)
+	c.ctx = ctx
 	logrus.Info("init simple module")
 	return c.settings, nil
 }
@@ -46,25 +48,37 @@ func (c *SimpleModule) InitCommand() ([]*cobra.Command, error) {
 }
 
 func (c *SimpleModule) ConfigChanged() {
-	logrus.Info("config changed")
-
+	logrus.Info("config changed ", *c.settings)
 }
 
 func (c *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
 	logrus.Info("root command")
 
 	logrus.Info("settings: ", c.settings.Test)
-
+	done := make(chan struct{})
+	c.wg.Add(1)
 	go func() {
-		logrus.Info("wait for 5 seconds ...")
-		<-time.After(5 * time.Second)
-		c.wg.Done()
+		for {
+			select {
+			case <-c.ctx.Done():
+				logrus.Info("all module done")
+				done <- struct{}{}
+			case <-done:
+				logrus.Info("simple module done")
+				c.wg.Done()
+				return
+			case <-time.After(time.Second):
+				logrus.Info("tick...")
+			}
+		}
 	}()
+
 }
 
 func main() {
-	gomodule.RegisterDefaultModules()
+	gomodule.RegisterDefaultModule(configcenter.CC)
 	gomodule.Register(instance)
+	gomodule.RegisterDefaultModules()
 	gomodule.Launch(context.Background())
 	gomodule.Wait()
 }

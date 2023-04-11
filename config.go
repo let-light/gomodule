@@ -1,10 +1,17 @@
 package gomodule
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"strings"
 	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/gogf/gf/os/gfile"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -12,16 +19,24 @@ import (
 
 var configInstance *configModule
 
+type ConfigSettings struct {
+}
+
 type ConfigFlags struct {
-	ConfigFile string `env:"config" flag:"config"`
-	Consul     string `env:"consul" flag:"consul"`
-	Etcd       string `env:"etcd"   flag:"etcd"`
+	LocalFile          string `env:"localcfg" flag:"localcfg"`
+	Consul             string `env:"consulcfg" flag:"consulcfg"`
+	Etcd               string `env:"etcdcfg"   flag:"etcdcfg"`
+	RemoteFile         string `env:"remotecfg" flag:"remotecfg"`
+	RemoteFileInterval int    `env:"remotecfginterval" flag:"remotecfginterval"`
 }
 
 type configModule struct {
-	flags  ConfigFlags
-	config *viper.Viper
-	wg     *sync.WaitGroup
+	flags    ConfigFlags
+	config   *viper.Viper
+	wg       *sync.WaitGroup
+	settings ConfigSettings
+	ctx      context.Context
+	mtx      sync.Mutex
 }
 
 func init() {
@@ -37,14 +52,17 @@ func (c *configModule) Viper() *viper.Viper {
 }
 
 func (c *configModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	c.ctx = ctx
 	c.wg = wg
-	return nil, nil
+	return &c.settings, nil
 }
 
 func (c *configModule) InitCommand() ([]*cobra.Command, error) {
-	GetRootCmd().PersistentFlags().StringVarP(&c.flags.ConfigFile, "config", "c", "config.yml", "Load config file")
-	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "consul", "", "Load config file from consul")
-	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "etcd", "", "Load config file from etcd")
+	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "config.yml", "Load config file")
+	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "cfg.consul", "", "Load config file from consul")
+	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "cfg.etcd", "", "Load config file from etcd")
+	GetRootCmd().PersistentFlags().StringVar(&c.flags.RemoteFile, "cfg.remote", "", "Load config file from remote api")
+	GetRootCmd().PersistentFlags().IntVar(&c.flags.RemoteFileInterval, "cfg.remote.interval", 30, "Interval to reload config file from remote api")
 
 	return nil, nil
 }
@@ -52,46 +70,198 @@ func (c *configModule) InitCommand() ([]*cobra.Command, error) {
 func (c *configModule) ConfigChanged() {
 }
 
-func (c *configModule) loadConfigFromFile() {
-	if !gfile.Exists(c.flags.ConfigFile) {
-		panic(fmt.Errorf("fatal error config file, %s not found", c.flags.ConfigFile))
+func (c *configModule) loadConfigFromLocal() {
+	if c.flags.LocalFile != "" && gfile.Exists(c.flags.LocalFile) {
+		c.config.AddConfigPath(gfile.Dir(c.flags.LocalFile))
+		c.config.SetConfigName(gfile.Basename(c.flags.LocalFile))
+		c.config.SetConfigType(gfile.Ext(c.flags.LocalFile)[1:])
+	} else {
+		c.config.AddConfigPath(".")        // optionally look for config in the working directory
+		c.config.AddConfigPath("./config") // optionally look for config in the working directory
+		c.config.SetConfigName("config")   // name of config file (without extension)
+		c.config.SetConfigType("yml")      // REQUIRED if the config file does not have the extension in the name
 	}
 
-	c.config = viper.New()
-	c.config.SetConfigFile(c.flags.ConfigFile)
 	err := c.config.ReadInConfig()
 	if err != nil {
 		panic(fmt.Errorf("fatal error config file, %s", err))
 	}
+	c.reloadSettings()
 
-	reloadSettings()
-}
+	c.config.OnConfigChange(func(e fsnotify.Event) {
+		if err := c.config.ReadInConfig(); err != nil {
+			panic(fmt.Errorf("fatal error config file, %s", err))
+		}
 
-func (c *configModule) loadConfigFromConsul() {
+		fmt.Println("Config file changed:", e.Name)
+		c.reloadSettings()
 
+		ConfigChanged()
+	})
+	c.config.WatchConfig()
 }
 
 func (c *configModule) loadConfigFromEtcd() {
-}
+	if c.flags.Etcd != "" {
+		u, err := url.Parse(c.flags.Etcd)
+		if err != nil {
+			panic(fmt.Errorf("etcd url parse error, %s", err))
+		}
 
-func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
-	if c.flags.Consul != "" {
-		c.loadConfigFromConsul()
-	} else if c.flags.Etcd != "" {
-		c.loadConfigFromEtcd()
-	} else {
-		c.loadConfigFromFile()
+		addr := u.Scheme + "://" + u.Host
+		path := u.Path
+		query := u.Query()
+
+		fileType := ""
+		ty := query["type"]
+		if len(ty) > 0 {
+			fileType = ty[0]
+		}
+
+		c.config.AddRemoteProvider("etcd", addr, path)
+		c.config.SetConfigType(fileType)
+		c.config.ReadRemoteConfig()
 	}
 }
 
-func reloadSettings() {
+func (c *configModule) loadConfigFromConsul() {
+	if c.flags.Consul != "" {
+		u, err := url.Parse(c.flags.Consul)
+		if err != nil {
+			panic(fmt.Errorf("consul url parse error, %s", err))
+		}
+
+		addr := u.Scheme + "://" + u.Host
+		path := u.Path
+		query := u.Query()
+
+		fileType := ""
+		ty := query["type"]
+		if len(ty) > 0 {
+			fileType = ty[0]
+		}
+
+		c.config.AddRemoteProvider("consul", addr, path)
+		c.config.SetConfigType(fileType)
+		c.config.ReadRemoteConfig()
+	}
+}
+
+func (c *configModule) getRemoteFileContent() ([]byte, string, error) {
+	resp, err := http.Get(c.flags.RemoteFile)
+	if err != nil {
+		// handle error
+		return nil, "", fmt.Errorf("get config error, %s", err)
+	}
+
+	defer resp.Body.Close()
+
+	configData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		// handle error
+		return nil, "", fmt.Errorf("read config error, %s", err)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+
+	if idx := strings.Index(ct, ";"); idx > 0 {
+		ct = ct[:idx]
+	}
+
+	// "yaml", "yml", "json", "toml", "hcl", "tfvars", "ini", "prop", "props", "properties", "dotenv", "env"
+	if strings.Contains(ct, "yaml") || strings.Contains(ct, "yml") {
+		return configData, "yaml", nil
+	} else if strings.Contains(ct, "toml") {
+		return configData, "toml", nil
+	} else if strings.Contains(ct, "json") {
+		return configData, "json", nil
+	} else if strings.Contains(ct, "prop") {
+		return configData, "prop", nil
+	} else if strings.Contains(ct, "props") {
+		return configData, "props", nil
+	} else if strings.Contains(ct, "tfvars") {
+		return configData, "tfvars", nil
+	} else if strings.Contains(ct, "properties") {
+		return configData, "properties", nil
+	} else if strings.Contains(ct, "hcl") {
+		return configData, "hcl", nil
+	} else if strings.Contains(ct, "ini") {
+		return configData, "ini", nil
+	} else if strings.Contains(ct, "dotenv") {
+		return configData, "dotenv", nil
+	} else if strings.Contains(ct, "env") {
+		return configData, "env", nil
+	} else {
+		return nil, "", fmt.Errorf("unknown config type")
+	}
+}
+
+func (c *configModule) loadConfigFromRemoteFile() {
+	if c.flags.RemoteFile == "" {
+		return
+	}
+
+	configData, ty, err := c.getRemoteFileContent()
+	if err != nil {
+		panic(fmt.Errorf("get config error, %s", err))
+	}
+
+	c.config.SetConfigType(ty)
+
+	if e := c.config.ReadConfig(bytes.NewBuffer(configData)); e != nil {
+		// handle error
+		panic(fmt.Errorf("read config error, %s", e))
+	}
+
+	if e := c.reloadSettings(); e != nil {
+		panic(fmt.Errorf("reload settings error, %s", e))
+	}
+
+	go func() {
+		defer func() {
+			if err := recover(); err != nil {
+				fmt.Println("loadConfigFromRemoteFile error:", err)
+			}
+		}()
+
+		for {
+			select {
+			case <-c.ctx.Done():
+				return
+			case <-time.After(time.Duration(c.flags.RemoteFileInterval) * time.Second):
+				c.reloadSettings()
+			}
+		}
+	}()
+}
+
+func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
+	c.config = viper.New()
+
+	if c.flags.RemoteFile != "" {
+		c.loadConfigFromRemoteFile()
+	} else {
+		c.loadConfigFromLocal()
+		c.loadConfigFromEtcd()
+		c.loadConfigFromConsul()
+	}
+}
+
+func (c *configModule) reloadSettings() error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
 	for _, mi := range manager.modules {
 		if mi == nil || mi.settings == nil {
 			continue
 		}
 
-		if err := ConfigModule().Viper().UnmarshalKey(mi.name, mi.settings); err != nil {
-			panic(fmt.Errorf("unmarshal config error, %s", err))
+		if err := c.config.UnmarshalKey(mi.name, mi.settings); err != nil {
+			return fmt.Errorf("unmarshal config error, %s", err)
 		}
 	}
+
+	ConfigChanged()
+
+	return nil
 }

@@ -26,13 +26,12 @@ type loggerSettings struct {
 }
 
 type loggerModule struct {
-	settings *loggerSettings
+	presettings loggerSettings
+	settings    *loggerSettings
 }
 
 func init() {
-	loggerInstance = &loggerModule{
-		settings: &loggerSettings{},
-	}
+	loggerInstance = &loggerModule{}
 }
 
 func LoggerModule() IModule {
@@ -41,22 +40,41 @@ func LoggerModule() IModule {
 
 func (l *loggerModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 
-	return l.settings, nil
+	return &l.presettings, nil
 }
 
 func (l *loggerModule) InitCommand() ([]*cobra.Command, error) {
-	// GetRootCmd().PersistentFlags().StringVarP(&l.settings.File, "log", "l", "logs/neon.log", "log file")
-	// GetRootCmd().PersistentFlags().StringVarP(&l.settings.Format, "format", "f", "text", "the format of logger")
-	// GetRootCmd().PersistentFlags().BoolVar(&l.settings.Console, "console", false, "logger enable console output")
-
 	return nil, nil
 }
 
 func (l *loggerModule) ConfigChanged() {
+	// if l.presettings.Level == "" {
+	// 	l.presettings.Level = "info"
+	// }
 
+	// if l.presettings.Formatter == "" {
+	// 	l.presettings.Formatter = "text"
+	// }
+
+	// if l.presettings.Format == "" {
+	// 	l.presettings.Format = "2006-01-02 15:04:05.000"
+	// }
+
+	// if l.presettings.File == "" {
+	// 	l.presettings.File = "logs/app.log"
+	// }
+
+	if l.settings == nil {
+		l.settings = &loggerSettings{}
+		*l.settings = l.presettings
+		l.reloadSettings()
+	} else if *l.settings != l.presettings {
+		*l.settings = l.presettings
+		l.reloadSettings()
+	}
 }
 
-func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
+func (l *loggerModule) reloadSettings() error {
 	if strings.EqualFold(l.settings.Formatter, "text") {
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp:   true,
@@ -72,13 +90,13 @@ func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
 	logrus.SetReportCaller(l.settings.ReportCaller)
 	level, err := logrus.ParseLevel(l.settings.Level)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	logrus.SetLevel(level)
 
 	fd, err := createLogFile(l.settings.File)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	var output io.Writer
@@ -89,6 +107,12 @@ func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
 	}
 
 	logrus.SetOutput(output)
+
+	return nil
+}
+
+func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
+
 }
 
 func createLogFile(file string) (*os.File, error) {

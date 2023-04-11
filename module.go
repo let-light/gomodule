@@ -3,9 +3,13 @@ package gomodule
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"reflect"
 	"sync"
+	"syscall"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -39,6 +43,27 @@ func init() {
 	manager = NewManager()
 }
 
+func (m *Manager) sysSignal() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch,
+		syscall.SIGHUP,
+		syscall.SIGINT,  // Ctrl+C
+		syscall.SIGQUIT, // Ctrl+\
+		syscall.SIGILL,  // illegal instruction
+		syscall.SIGABRT, // abort() called
+		syscall.SIGFPE,  // floating point exception
+		syscall.SIGSEGV, // segmentation violation
+		syscall.SIGPIPE, // broken pipe
+		syscall.SIGTERM, // software termination signal from kill
+	)
+
+	sig := <-ch
+
+	logrus.Infof("receive signal: %v", sig)
+
+	m.cancel()
+}
+
 func NewManager() *Manager {
 	m := &Manager{
 		modules:        make([]*ModuleInfo, 0),
@@ -54,6 +79,8 @@ func NewManager() *Manager {
 			mi.module.RootCommand(cmd, args)
 		}
 	}
+
+	go m.sysSignal()
 
 	return m
 }
@@ -180,4 +207,10 @@ func Wait() {
 	}()
 
 	<-manager.ctx.Done()
+}
+
+func ConfigChanged() {
+	for _, mi := range manager.modules {
+		mi.module.ConfigChanged()
+	}
 }

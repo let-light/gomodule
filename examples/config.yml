@@ -8,5 +8,5 @@ LoggerModule: {
 }
 
 SimpleModule: {
-  Test: 'hello world'
+  Test: 'hello world 111'
 }
