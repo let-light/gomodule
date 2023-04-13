@@ -20,6 +20,7 @@ type Settings struct {
 }
 
 type SimpleModule struct {
+	gomodule.DefaultModule
 	flags    *MainFlags
 	settings *Settings
 	wg       *sync.WaitGroup
@@ -40,15 +41,6 @@ func (c *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (inte
 	c.ctx = ctx
 	logrus.Info("init simple module")
 	return c.settings, nil
-}
-
-func (c *SimpleModule) InitCommand() ([]*cobra.Command, error) {
-	logrus.Info("init command")
-	return nil, nil
-}
-
-func (c *SimpleModule) ConfigChanged() {
-	logrus.Info("config changed ", *c.settings)
 }
 
 func (c *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
