@@ -43,6 +43,25 @@ func init() {
 	manager = NewManager()
 }
 
+type DefaultModule struct {
+}
+
+func (dm *DefaultModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	return nil, nil
+}
+
+func (dm *DefaultModule) InitCommand() ([]*cobra.Command, error) {
+	return nil, nil
+}
+
+func (dm *DefaultModule) ConfigChanged() {
+
+}
+
+func (dm *DefaultModule) RootCommand(cmd *cobra.Command, args []string) {
+
+}
+
 func (m *Manager) sysSignal() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch,
