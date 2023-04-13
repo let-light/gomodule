@@ -10,3 +10,4 @@ LoggerModule: {
 SimpleModule: {
   Test: 'hello world 111'
 }
+

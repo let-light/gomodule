@@ -89,24 +89,24 @@ func initDefaultModules() {
 	modules := make([]*ModuleInfo, 0)
 	for _, module := range manager.defaultModules {
 		if module == nil {
-			fmt.Printf("module is nil")
+			fmt.Println("module is nil")
 			continue
 		}
 
 		t := reflect.TypeOf(module)
 		if t.Kind() != reflect.Ptr {
-			fmt.Printf("module must be pointer")
+			fmt.Println("module must be pointer")
 			continue
 		}
 
 		if t.Elem().Kind() != reflect.Struct {
-			fmt.Printf("module must be struct")
+			fmt.Println("module must be struct")
 			continue
 		}
 
 		for _, mi := range manager.modules {
 			if mi.module == module {
-				fmt.Printf("module[%p] is existed", module)
+				fmt.Printf("module[%p] is existed\n", module)
 				return
 			}
 		}
@@ -161,7 +161,7 @@ func RegisterDefaultModule(modules ...IModule) {
 }
 
 func RegisterDefaultModules() {
-	RegisterDefaultModule(ConfigModule(), LoggerModule())
+	RegisterDefaultModule(SyServiceModule(), ConfigModule(), LoggerModule())
 }
 
 func Launch(ctx context.Context) error {

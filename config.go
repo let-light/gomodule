@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,7 @@ var configInstance *configModule
 type ConfigSettings struct {
 }
 
-type ConfigFlags struct {
+type configFlags struct {
 	LocalFile          string `env:"localcfg" flag:"localcfg"`
 	Consul             string `env:"consulcfg" flag:"consulcfg"`
 	Etcd               string `env:"etcdcfg"   flag:"etcdcfg"`
@@ -31,7 +32,7 @@ type ConfigFlags struct {
 }
 
 type configModule struct {
-	flags    ConfigFlags
+	flags    configFlags
 	config   *viper.Viper
 	wg       *sync.WaitGroup
 	settings ConfigSettings
@@ -58,7 +59,7 @@ func (c *configModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (inte
 }
 
 func (c *configModule) InitCommand() ([]*cobra.Command, error) {
-	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "config.yml", "Load config file")
+	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "", "Load config file")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "cfg.consul", "", "Load config file from consul")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "cfg.etcd", "", "Load config file from etcd")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.RemoteFile, "cfg.remote", "", "Load config file from remote api")
@@ -71,11 +72,23 @@ func (c *configModule) ConfigChanged() {
 }
 
 func (c *configModule) loadConfigFromLocal() {
-	if c.flags.LocalFile != "" && gfile.Exists(c.flags.LocalFile) {
+	if c.flags.LocalFile != "" {
+		if !gfile.Exists(c.flags.LocalFile) {
+			panic(fmt.Errorf("config file not found: %s", c.flags.LocalFile))
+		} else {
+			fmt.Printf("config file: %s\n", c.flags.LocalFile)
+		}
+
 		c.config.AddConfigPath(gfile.Dir(c.flags.LocalFile))
 		c.config.SetConfigName(gfile.Basename(c.flags.LocalFile))
 		c.config.SetConfigType(gfile.Ext(c.flags.LocalFile)[1:])
 	} else {
+		pwd, err := os.Getwd()
+		if err != nil {
+			panic(fmt.Errorf("get current work dir failed, %s", err))
+		}
+
+		c.config.AddConfigPath(pwd)
 		c.config.AddConfigPath(".")        // optionally look for config in the working directory
 		c.config.AddConfigPath("./config") // optionally look for config in the working directory
 		c.config.SetConfigName("config")   // name of config file (without extension)
