@@ -41,6 +41,19 @@ func (s *SimpleModule) Logger() *logrus.Entry {
 	return instance.logger
 }
 
+func (s *SimpleModule) InitCommand() ([]*cobra.Command, error) {
+	s.Logger().Info("init command")
+	cmd := &cobra.Command{
+		Use:   "desc",
+		Short: "simple module",
+		Run: func(cmd *cobra.Command, args []string) {
+			s.Logger().Info("simple module command run ...")
+		},
+	}
+
+	return []*cobra.Command{cmd}, nil
+}
+
 func (s *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 	s.wg = wg
 	s.ctx = ctx
