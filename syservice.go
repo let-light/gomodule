@@ -2,7 +2,6 @@ package gomodule
 
 import (
 	"context"
-	"fmt"
 	"os/user"
 	"strings"
 	"sync"
@@ -23,10 +22,12 @@ type sysFlags struct {
 }
 
 type syservice struct {
+	DefaultModule
 	ctx    context.Context
 	cancel context.CancelFunc
 	svc    service.Service
 	flags  sysFlags
+	logger *logrus.Entry
 }
 
 var serviceInstance *syservice
@@ -37,6 +38,7 @@ func init() {
 	serviceInstance = &syservice{
 		ctx:    ctx,
 		cancel: cancel,
+		logger: logrus.WithField("module", "syserver"),
 	}
 }
 
@@ -44,28 +46,34 @@ func SyServiceModule() *syservice {
 	return serviceInstance
 }
 
+func (s *syservice) Logger() *logrus.Entry {
+	return s.logger
+}
+
 func (s *syservice) Start(ss service.Service) error {
 	return nil
 }
 
 func (s *syservice) Stop(ss service.Service) error {
-	logrus.Info("service stop")
+	s.Logger().Info("service stop")
 	s.cancel()
 	return nil
 }
 
 func (s *syservice) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	s.Logger().Info("init syservice module")
 	return nil, nil
 }
 
 func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 	u, err := user.Current()
 	if err != nil {
-		fmt.Printf("get current user failed, err %v", err)
-		return nil, nil
+		s.Logger().Infof("get current user failed, err %v", err)
+		return nil, err
+	} else {
+		s.Logger().Infof("current user %+v", u)
 	}
 
-	fmt.Printf("current user %+v\n", u)
 	cmd := &cobra.Command{
 		Use:   "service",
 		Short: `[install|uninstall|start|stop]`,
@@ -81,84 +89,84 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 			})
 
 			if err != nil {
-				logrus.Error("new service failed:", err)
+				s.Logger().Error("new service failed:", err)
 				return
 			}
 
 			install, err := cmd.Flags().GetBool("install")
 			if err != nil {
-				logrus.Error("service command get install flag error:", err)
+				s.Logger().Error("service command get install flag error:", err)
 				return
 			}
 
 			uninstall, err := cmd.Flags().GetBool("uninstall")
 			if err != nil {
-				logrus.Error("service command get uninstall flag error:", err)
+				s.Logger().Error("service command get uninstall flag error:", err)
 				return
 			}
 
 			start, err := cmd.Flags().GetBool("start")
 			if err != nil {
-				logrus.Error("service command get start flag error:", err)
+				s.Logger().Error("service command get start flag error:", err)
 				return
 			}
 
 			stop, err := cmd.Flags().GetBool("stop")
 			if err != nil {
-				logrus.Error("service command get stop flag error:", err)
+				s.Logger().Error("service command get stop flag error:", err)
 				return
 			}
 
 			restart, err := cmd.Flags().GetBool("restart")
 			if err != nil {
-				logrus.Error("service command get restart flag error:", err)
+				s.Logger().Error("service command get restart flag error:", err)
 				return
 			}
 
 			if install {
 				err = s.svc.Install()
 				if err != nil {
-					logrus.Errorf("service install error: ", err)
+					s.Logger().Errorf("service install error: ", err)
 					return
 				}
-				logrus.Infof("service install success")
+				s.Logger().Infof("service install success")
 			}
 
 			if uninstall {
 				err = s.svc.Uninstall()
 				if err != nil {
-					logrus.Errorf("service uninstall error: ", err)
+					s.Logger().Errorf("service uninstall error: ", err)
 					return
 				}
-				logrus.Infof("service uninstall success")
+				s.Logger().Infof("service uninstall success")
 				return
 			}
 
 			if start {
 				err = s.svc.Start()
 				if err != nil {
-					logrus.Errorf("service start error: ", err)
+					s.Logger().Errorf("service start error: ", err)
 					return
 				}
-				logrus.Infof("service start success")
+				s.Logger().Infof("service start success")
 			}
 
 			if stop {
 				err = s.svc.Stop()
 				if err != nil {
-					logrus.Errorf("service stop error: ", err)
+					s.Logger().Errorf("service stop error: ", err)
 					return
 				}
-				logrus.Infof("service stop success")
+				s.Logger().Infof("service stop success")
 			}
 
 			if restart {
 				err = s.svc.Restart()
 				if err != nil {
-					logrus.Errorf("service restart error: ", err)
+					s.Logger().Errorf("service restart error: ", err)
 					return
 				}
-				logrus.Infof("service restart success")
+				s.Logger().Infof("service restart success")
 			}
 		},
 	}
@@ -175,10 +183,6 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 	cmd.Flags().StringVar(&s.flags.Args, "args", "", "args")
 
 	return []*cobra.Command{cmd}, nil
-
-}
-
-func (s *syservice) ConfigChanged() {
 
 }
 

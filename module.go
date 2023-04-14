@@ -29,7 +29,8 @@ type Manager struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	wg             *sync.WaitGroup
-	defaultModules []IModule
+	defaultModules []*ModuleInfo
+	logger         *logrus.Entry
 }
 
 type IModule interface {
@@ -78,16 +79,21 @@ func (m *Manager) sysSignal() {
 
 	sig := <-ch
 
-	logrus.Infof("receive signal: %v", sig)
+	logger().Infof("receive signal: %v", sig)
 
 	m.cancel()
+}
+
+func logger() *logrus.Entry {
+	return manager.logger
 }
 
 func NewManager() *Manager {
 	m := &Manager{
 		modules:        make([]*ModuleInfo, 0),
 		rootCmd:        &cobra.Command{},
-		defaultModules: make([]IModule, 0),
+		defaultModules: make([]*ModuleInfo, 0),
+		logger:         logrus.WithField("module", "manager"),
 	}
 
 	m.wg = &sync.WaitGroup{}
@@ -105,96 +111,150 @@ func NewManager() *Manager {
 }
 
 func initDefaultModules() {
-	modules := make([]*ModuleInfo, 0)
-	for _, module := range manager.defaultModules {
-		if module == nil {
-			fmt.Println("module is nil")
-			continue
-		}
-
-		t := reflect.TypeOf(module)
-		if t.Kind() != reflect.Ptr {
-			fmt.Println("module must be pointer")
-			continue
-		}
-
-		if t.Elem().Kind() != reflect.Struct {
-			fmt.Println("module must be struct")
-			continue
-		}
-
+	for _, dmi := range manager.defaultModules {
 		for _, mi := range manager.modules {
-			if mi.module == module {
-				fmt.Printf("module[%p] is existed\n", module)
-				return
+			if mi.name == dmi.name {
+				logger().Panic("module[%+v] is existed\n", dmi)
 			}
 		}
-
-		mi := &ModuleInfo{
-			module: module,
-			cmds:   make([]*cobra.Command, 0),
-			name:   t.Elem().Name(),
-		}
-
-		modules = append(modules, mi)
 	}
 
-	manager.modules = append(modules, manager.modules...)
+	modules := manager.defaultModules
+	modules = append(modules, manager.modules...)
+	manager.modules = modules
 }
 
-func Register(modules ...IModule) error {
-	if len(modules) == 0 {
-		return nil
+func Register(module IModule) error {
+	if module == nil {
+		return fmt.Errorf("module is nil")
 	}
 
-	for _, module := range modules {
-		t := reflect.TypeOf(module)
-		if t.Kind() != reflect.Ptr {
-			return fmt.Errorf("module must be pointer")
-		}
-
-		if t.Elem().Kind() != reflect.Struct {
-			return fmt.Errorf("module must be struct")
-		}
-
-		for _, mi := range manager.modules {
-			if mi.module == module {
-				return fmt.Errorf("module[%p] is existed", module)
-			}
-		}
-
-		mi := &ModuleInfo{
-			module: module,
-			cmds:   make([]*cobra.Command, 0),
-			name:   t.Elem().Name(),
-		}
-
-		manager.modules = append(manager.modules, mi)
+	t := reflect.TypeOf(module)
+	if t.Kind() != reflect.Ptr {
+		return fmt.Errorf("module must be pointer")
 	}
+
+	if t.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("module must be struct")
+	}
+
+	name := t.Elem().Name()
+	for _, mi := range manager.modules {
+		if mi.name == t.Elem().Name() {
+			return fmt.Errorf("module[%+v] is existed", mi)
+		}
+	}
+
+	logger().Infof("get module named: %s", name)
+
+	return RegisterWithName(module, name)
+}
+
+func RegisterDefaultModule(module IModule) error {
+	if module == nil {
+		return fmt.Errorf("module is nil")
+	}
+
+	t := reflect.TypeOf(module)
+	if t.Kind() != reflect.Ptr {
+		return fmt.Errorf("module must be pointer")
+	}
+
+	if t.Elem().Kind() != reflect.Struct {
+		return fmt.Errorf("module must be struct")
+	}
+
+	name := t.Elem().Name()
+	for _, mi := range manager.modules {
+		if mi.name == name {
+			return fmt.Errorf("module[%+v] is existed", mi)
+		}
+	}
+
+	logger().Infof("get module named: %s", name)
+
+	return RegisterDefaultModuleWithName(module, name)
+}
+
+func RegisterDefaultModules() {
+	if e := RegisterDefaultModuleWithName(SyServiceModule(), "syservice"); e != nil {
+		logger().Panic(e)
+	}
+
+	if e := RegisterDefaultModuleWithName(ConfigModule(), "config"); e != nil {
+		logger().Panic(e)
+	}
+
+	if e := RegisterDefaultModuleWithName(LoggerModule(), "logger"); e != nil {
+		logger().Panic(e)
+	}
+}
+
+func RegisterWithName(module IModule, name string) error {
+	t := reflect.TypeOf(module)
+	if t.Kind() != reflect.Ptr {
+		logger().Info("module must be pointer")
+		return fmt.Errorf("module must be pointer")
+	}
+
+	if t.Elem().Kind() != reflect.Struct {
+		logger().Info("module must be struct")
+		return fmt.Errorf("module must be struct")
+	}
+
+	manager.modules = append(manager.modules, &ModuleInfo{
+		module: module,
+		cmds:   make([]*cobra.Command, 0),
+		name:   name,
+	})
+
+	logger().Infof("register module: %s", name)
 
 	return nil
 }
 
-func RegisterDefaultModule(modules ...IModule) {
-	manager.defaultModules = append(manager.defaultModules, modules...)
-}
+func RegisterDefaultModuleWithName(module IModule, name string) error {
+	t := reflect.TypeOf(module)
+	if t.Kind() != reflect.Ptr {
+		logger().Info("module must be pointer")
+		return fmt.Errorf("module must be pointer")
+	}
 
-func RegisterDefaultModules() {
-	RegisterDefaultModule(SyServiceModule(), ConfigModule(), LoggerModule())
+	if t.Elem().Kind() != reflect.Struct {
+		logger().Info("module must be struct")
+		return fmt.Errorf("module must be struct")
+	}
+
+	manager.defaultModules = append(manager.defaultModules, &ModuleInfo{
+		module: module,
+		cmds:   make([]*cobra.Command, 0),
+		name:   name,
+	})
+
+	logger().Infof("register default module: %s", name)
+
+	return nil
 }
 
 func Launch(ctx context.Context) error {
 	manager.ctx, manager.cancel = context.WithCancel(ctx)
 	manager.once.Do(initDefaultModules)
 
+	logger().Info("launch manager, modules: ", len(manager.modules))
+	logger().Info("launch manager, default modules: ", len(manager.defaultModules))
+
 	// init module
 	for _, mi := range manager.modules {
 		settings, err := mi.module.InitModule(ctx, manager.wg)
 		if err != nil {
 			return err
+		} else if settings == nil {
+			logger().Debugf("module[%s] settings is nil", mi.name)
 		}
 		mi.settings = settings
 	}
+
+	logger().Debugf("launch manager, modules: %+v", manager.modules)
 
 	// init command
 	for _, mi := range manager.modules {

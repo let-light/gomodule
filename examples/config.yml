@@ -1,4 +1,4 @@
-LoggerModule: {
+logger: {
   file: logs/gomodule.log,
   level: debug,
   formatter: text, # text or json
@@ -8,6 +8,6 @@ LoggerModule: {
 }
 
 SimpleModule: {
-  Test: 'hello world 111'
+  Test: 'hello world'
 }
 

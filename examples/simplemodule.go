@@ -7,7 +7,6 @@ import (
 
 	"github.com/let-light/gomodule"
 	"github.com/let-light/gomodule/examples/configcenter"
-	_ "github.com/let-light/gomodule/examples/configcenter"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -25,6 +24,7 @@ type SimpleModule struct {
 	settings *Settings
 	wg       *sync.WaitGroup
 	ctx      context.Context
+	logger   *logrus.Entry
 }
 
 var instance *SimpleModule
@@ -33,34 +33,39 @@ func init() {
 	instance = &SimpleModule{
 		flags:    &MainFlags{},
 		settings: &Settings{},
+		logger:   logrus.WithField("module", "simple"),
 	}
 }
 
-func (c *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	c.wg = wg
-	c.ctx = ctx
-	logrus.Info("init simple module")
-	return c.settings, nil
+func (s *SimpleModule) Logger() *logrus.Entry {
+	return instance.logger
 }
 
-func (c *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
-	logrus.Info("root command")
+func (s *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	s.wg = wg
+	s.ctx = ctx
+	s.Logger().Info("init simple module")
+	return s.settings, nil
+}
 
-	logrus.Info("settings: ", c.settings.Test)
+func (s *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
+	s.Logger().Info("root command")
+
+	s.Logger().Info("settings: ", s.settings.Test)
 	done := make(chan struct{})
-	c.wg.Add(1)
+	s.wg.Add(1)
 	go func() {
 		for {
 			select {
-			case <-c.ctx.Done():
-				logrus.Info("all module done")
+			case <-s.ctx.Done():
+				s.Logger().Info("all module done")
 				done <- struct{}{}
 			case <-done:
-				logrus.Info("simple module done")
-				c.wg.Done()
+				s.Logger().Info("simple module done")
+				s.wg.Done()
 				return
 			case <-time.After(time.Second):
-				logrus.Info("tick...")
+				s.Logger().Info("tick...")
 			}
 		}
 	}()

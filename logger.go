@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 )
 
 type Fields logrus.Fields
@@ -26,44 +25,32 @@ type loggerSettings struct {
 }
 
 type loggerModule struct {
+	DefaultModule
 	presettings loggerSettings
 	settings    *loggerSettings
+	logger      *logrus.Entry
 }
 
 func init() {
-	loggerInstance = &loggerModule{}
+	loggerInstance = &loggerModule{
+		logger: logrus.WithField("module", "logger"),
+	}
 }
 
 func LoggerModule() IModule {
 	return loggerInstance
 }
 
-func (l *loggerModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+func (l *loggerModule) Logger() *logrus.Entry {
+	return l.logger
+}
 
+func (l *loggerModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+	l.Logger().Infof("init logger module")
 	return &l.presettings, nil
 }
 
-func (l *loggerModule) InitCommand() ([]*cobra.Command, error) {
-	return nil, nil
-}
-
 func (l *loggerModule) ConfigChanged() {
-	// if l.presettings.Level == "" {
-	// 	l.presettings.Level = "info"
-	// }
-
-	// if l.presettings.Formatter == "" {
-	// 	l.presettings.Formatter = "text"
-	// }
-
-	// if l.presettings.Format == "" {
-	// 	l.presettings.Format = "2006-01-02 15:04:05.000"
-	// }
-
-	// if l.presettings.File == "" {
-	// 	l.presettings.File = "logs/app.log"
-	// }
-
 	if l.settings == nil {
 		l.settings = &loggerSettings{}
 		*l.settings = l.presettings
@@ -109,10 +96,6 @@ func (l *loggerModule) reloadSettings() error {
 	logrus.SetOutput(output)
 
 	return nil
-}
-
-func (l *loggerModule) RootCommand(cmd *cobra.Command, args []string) {
-
 }
 
 func createLogFile(file string) (*os.File, error) {

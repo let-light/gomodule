@@ -14,6 +14,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/gogf/gf/os/gfile"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -32,20 +33,28 @@ type configFlags struct {
 }
 
 type configModule struct {
+	DefaultModule
 	flags    configFlags
 	config   *viper.Viper
 	wg       *sync.WaitGroup
 	settings ConfigSettings
 	ctx      context.Context
 	mtx      sync.Mutex
+	logger   *logrus.Entry
 }
 
 func init() {
-	configInstance = &configModule{}
+	configInstance = &configModule{
+		logger: logrus.WithField("module", "config"),
+	}
 }
 
 func ConfigModule() *configModule {
 	return configInstance
+}
+
+func (c *configModule) Logger() *logrus.Entry {
+	return configInstance.logger
 }
 
 func (c *configModule) Viper() *viper.Viper {
@@ -59,6 +68,7 @@ func (c *configModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (inte
 }
 
 func (c *configModule) InitCommand() ([]*cobra.Command, error) {
+	c.Logger().Info("init config module")
 	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "", "Load config file")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "cfg.consul", "", "Load config file from consul")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "cfg.etcd", "", "Load config file from etcd")
@@ -68,21 +78,20 @@ func (c *configModule) InitCommand() ([]*cobra.Command, error) {
 	return nil, nil
 }
 
-func (c *configModule) ConfigChanged() {
-}
-
 func (c *configModule) loadConfigFromLocal() {
 	if c.flags.LocalFile != "" {
 		if !gfile.Exists(c.flags.LocalFile) {
 			panic(fmt.Errorf("config file not found: %s", c.flags.LocalFile))
 		} else {
-			fmt.Printf("config file: %s\n", c.flags.LocalFile)
+			c.Logger().Infof("config file: %s\n", c.flags.LocalFile)
 		}
 
 		c.config.AddConfigPath(gfile.Dir(c.flags.LocalFile))
 		c.config.SetConfigName(gfile.Basename(c.flags.LocalFile))
 		c.config.SetConfigType(gfile.Ext(c.flags.LocalFile)[1:])
 	} else {
+		c.Logger().Info("default config file: config.yml (./config.yml or ./config/config.yml)")
+
 		pwd, err := os.Getwd()
 		if err != nil {
 			panic(fmt.Errorf("get current work dir failed, %s", err))
@@ -106,7 +115,7 @@ func (c *configModule) loadConfigFromLocal() {
 			panic(fmt.Errorf("fatal error config file, %s", err))
 		}
 
-		fmt.Println("Config file changed:", e.Name)
+		c.Logger().Info("Config file changed:", e.Name)
 		c.reloadSettings()
 
 		ConfigChanged()
@@ -233,7 +242,7 @@ func (c *configModule) loadConfigFromRemoteFile() {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				fmt.Println("loadConfigFromRemoteFile error:", err)
+				c.Logger().Info("loadConfigFromRemoteFile error:", err)
 			}
 		}()
 
@@ -251,6 +260,8 @@ func (c *configModule) loadConfigFromRemoteFile() {
 func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
 	c.config = viper.New()
 
+	c.Logger().Infof("config flags: %+v", c.flags)
+
 	if c.flags.RemoteFile != "" {
 		c.loadConfigFromRemoteFile()
 	} else {
@@ -264,11 +275,12 @@ func (c *configModule) reloadSettings() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
+	c.Logger().Info("reload settings, modules:", len(manager.modules))
 	for _, mi := range manager.modules {
-		if mi == nil || mi.settings == nil {
+		if mi.settings == nil {
 			continue
 		}
-
+		c.Logger().Info("reload settings:", mi.name)
 		if err := c.config.UnmarshalKey(mi.name, mi.settings); err != nil {
 			return fmt.Errorf("unmarshal config error, %s", err)
 		}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gogf/gf/frame/g"
 	"github.com/gogf/gf/net/ghttp"
+	"github.com/let-light/gomodule"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -30,6 +31,7 @@ type RemoteConfig struct {
 }
 
 type ConfigCenter struct {
+	gomodule.DefaultModule
 	wg  *sync.WaitGroup
 	ctx context.Context
 }
@@ -43,7 +45,7 @@ func init() {
 func (c *ConfigCenter) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
 	c.wg = wg
 	c.ctx = ctx
-	logrus.Info("init simple module")
+	logrus.Info("init configcenter module")
 	return nil, nil
 }
 
@@ -74,7 +76,6 @@ func (c *ConfigCenter) RootCommand(cmd *cobra.Command, args []string) {
 				Test: "test",
 			},
 		})
-
 	})
 	s.SetPort(9990)
 	go func() {
