@@ -1,75 +1,11 @@
-# example
+# gomodule
 
-```golang
-package main
+- 模块化加载
+- 配置文件自动加载
+- 自动给模块的配置结构体赋值
+- 加载本地配置文件、网络配置文件，可以将etcd、consul的键值作为配置项
+- 对配置文件动态加载，实时修改实时生效，无需重启进程
+- 支持losrus日志库
+- 模块生命周期统一管理
 
-import (
-	"context"
-	"sync"
-	"time"
-
-	"github.com/let-light/gomodule"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
-)
-
-type MainFlags struct {
-}
-
-type Settings struct {
-	Test string `mapstructure:"test"`
-}
-
-type SimpleModule struct {
-	flags    *MainFlags
-	settings *Settings
-	wg       *sync.WaitGroup
-}
-
-var instance *SimpleModule
-
-func init() {
-	instance = &SimpleModule{
-		flags:    &MainFlags{},
-		settings: &Settings{},
-	}
-	gomodule.Register(instance)
-}
-
-func (c *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	c.wg = wg
-	c.wg.Add(1)
-	logrus.Info("init simple module")
-	return c.settings, nil
-}
-
-func (c *SimpleModule) InitCommand() ([]*cobra.Command, error) {
-	logrus.Info("init command")
-	return nil, nil
-}
-
-func (c *SimpleModule) ConfigChanged() {
-	logrus.Info("config changed")
-
-}
-
-func (c *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
-	logrus.Info("root command")
-
-	logrus.Info("settings: ", c.settings.Test)
-
-	go func() {
-		logrus.Info("wait for 5 seconds ...")
-		<-time.After(5 * time.Second)
-		c.wg.Done()
-	}()
-}
-
-func main() {
-	gomodule.RegisterDefaultModule(gomodule.ConfigModule())
-	gomodule.RegisterDefaultModule(gomodule.LoggerModule())
-	gomodule.Launch(context.Background())
-	gomodule.Wait()
-}
-
-```
+详细使用流程可参考`examples`下的demo
