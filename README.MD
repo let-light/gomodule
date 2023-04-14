@@ -16,6 +16,8 @@
 
 ## Demo 编译运行
 
+### 标准模式启动
+
 ```bash
 cd examples
 go run simplemodule.go
@@ -59,6 +61,8 @@ INFO[2023-04-14 15:53:23] tick...                                       module=s
 INFO[2023-04-14 15:53:24] tick...                                       module=simple
 ```
 
+### 命令行操作实例
+
 ```bash
 cd examples
 go run simplemodule.go desc
@@ -83,4 +87,48 @@ INFO[0000] current user &{Uid:501 Gid:20 Username:root Name:root HomeDir:/Users/
 INFO[0000] init config module                            module=config
 INFO[0000] init command                                  module=simple
 INFO[0000] simple module command run ...                 module=simple
+```
+
+### 服务注册
+
+```bash
+go build simplemodule
+sudo ./simplemodule service --install --service=gomodule --workdir=/var/gomodule
+```
+
+```log
+INFO[0000] get module named: ConfigCenter                module=manager
+INFO[0000] register default module: ConfigCenter         module=manager
+INFO[0000] get module named: SimpleModule                module=manager
+INFO[0000] register module: SimpleModule                 module=manager
+INFO[0000] register default module: syservice            module=manager
+INFO[0000] register default module: config               module=manager
+INFO[0000] register default module: logger               module=manager
+INFO[0000] launch manager, modules: 5                    module=manager
+INFO[0000] launch manager, default modules: 4            module=manager
+INFO[0000] init configcenter module                     
+INFO[0000] init syservice module                         module=syserver
+INFO[0000] init logger module                            module=logger
+INFO[0000] init simple module                            module=simple
+INFO[0000] init command                                 
+INFO[0000] current user &{Uid:0 Gid:0 Username:root Name:System Administrator HomeDir:/var/root}  module=syserver
+INFO[0000] init config module                            module=config
+INFO[0000] init command                                  module=simple
+INFO[0000] service install success                       module=syserver
+```
+
+```bash
+sudo ./simplemodule service --start --service=gomodule --workdir=/var/gomodule
+```
+
+```bash
+sudo ./simplemodule service --restart --service=gomodule --workdir=/var/gomodule
+```
+
+```bash
+sudo ./simplemodule service --stop --service=gomodule --workdir=/var/gomodule
+```
+
+```bash
+sudo ./simplemodule service --uninstall --service=gomodule --workdir=/var/gomodule
 ```
