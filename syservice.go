@@ -2,7 +2,6 @@ package gomodule
 
 import (
 	"context"
-	"os/user"
 	"strings"
 	"sync"
 
@@ -66,14 +65,6 @@ func (s *syservice) InitModule(ctx context.Context, wg *sync.WaitGroup) (interfa
 }
 
 func (s *syservice) InitCommand() ([]*cobra.Command, error) {
-	u, err := user.Current()
-	if err != nil {
-		s.Logger().Infof("get current user failed, err %v", err)
-		return nil, err
-	} else {
-		s.Logger().Infof("current user %+v", u)
-	}
-
 	cmd := &cobra.Command{
 		Use:   "service",
 		Short: `[install|uninstall|start|stop]`,

@@ -260,8 +260,6 @@ func (c *configModule) loadConfigFromRemoteFile() {
 func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
 	c.config = viper.New()
 
-	c.Logger().Infof("config flags: %+v", c.flags)
-
 	if c.flags.RemoteFile != "" {
 		c.loadConfigFromRemoteFile()
 	} else {
