@@ -69,14 +69,19 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 		Use:   "service",
 		Short: `Service manager, --help for more info`,
 		Long:  `it is a command for service install uninstall start stop`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(cmd *cobra.Command, _ []string) {
 			var err error
+			var args []string = nil
+			if s.flags.Args != "" {
+				args = strings.Split(s.flags.Args, " ")
+			}
+
 			s.svc, err = service.New(s, &service.Config{
 				Name:             s.flags.Service,
 				DisplayName:      s.flags.Display,
 				Description:      s.flags.Description,
 				WorkingDirectory: s.flags.WorkDir,
-				Arguments:        strings.Split(s.flags.Args, " "),
+				Arguments:        args,
 				Executable:       gfile.SelfPath(),
 			})
 
