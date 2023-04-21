@@ -67,7 +67,7 @@ func (s *syservice) InitModule(ctx context.Context, wg *sync.WaitGroup) (interfa
 func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 	cmd := &cobra.Command{
 		Use:   "service",
-		Short: `[install|uninstall|start|stop]`,
+		Short: `Service manager, --help for more info`,
 		Long:  `it is a command for service install uninstall start stop`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -123,14 +123,13 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 				s.Logger().Infof("service install success")
 			}
 
-			if uninstall {
-				err = s.svc.Uninstall()
+			if restart {
+				err = s.svc.Restart()
 				if err != nil {
-					s.Logger().Errorf("service uninstall error: ", err)
+					s.Logger().Errorf("service restart error: ", err)
 					return
 				}
-				s.Logger().Infof("service uninstall success")
-				return
+				s.Logger().Infof("service restart success")
 			}
 
 			if start {
@@ -151,27 +150,28 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 				s.Logger().Infof("service stop success")
 			}
 
-			if restart {
-				err = s.svc.Restart()
+			if uninstall {
+				err = s.svc.Uninstall()
 				if err != nil {
-					s.Logger().Errorf("service restart error: ", err)
+					s.Logger().Errorf("service uninstall error: ", err)
 					return
 				}
-				s.Logger().Infof("service restart success")
+				s.Logger().Infof("service uninstall success")
+				return
 			}
 		},
 	}
 
-	cmd.Flags().BoolP("install", "i", false, "install your service")
-	cmd.Flags().BoolP("uninstall", "u", false, "uninstall your service")
-	cmd.Flags().BoolP("start", "s", false, "start your service")
-	cmd.Flags().BoolP("stop", "t", false, "stop your service")
-	cmd.Flags().BoolP("restart", "r", false, "restart your service")
-	cmd.Flags().StringVar(&s.flags.Service, "service", "", "service name")
-	cmd.Flags().StringVar(&s.flags.Display, "display", "", "display name")
-	cmd.Flags().StringVar(&s.flags.Description, "description", "", "description")
-	cmd.Flags().StringVar(&s.flags.WorkDir, "workdir", gfile.SelfDir(), "workdir")
-	cmd.Flags().StringVar(&s.flags.Args, "args", "", "args")
+	cmd.PersistentFlags().BoolP("install", "i", false, "install your service")
+	cmd.PersistentFlags().BoolP("uninstall", "u", false, "uninstall your service")
+	cmd.PersistentFlags().BoolP("start", "s", false, "start your service")
+	cmd.PersistentFlags().BoolP("stop", "t", false, "stop your service")
+	cmd.PersistentFlags().BoolP("restart", "r", false, "restart your service")
+	cmd.PersistentFlags().StringVar(&s.flags.Service, "service", "", "service name for service")
+	cmd.PersistentFlags().StringVar(&s.flags.Display, "display", "", "display name for service")
+	cmd.PersistentFlags().StringVar(&s.flags.Description, "description", "", "description for service")
+	cmd.PersistentFlags().StringVar(&s.flags.WorkDir, "workdir", gfile.Pwd(), "workdir path for service run")
+	cmd.PersistentFlags().StringVar(&s.flags.Args, "args", "", "cmd args for service run, split by space(' ')")
 
 	return []*cobra.Command{cmd}, nil
 
