@@ -77,6 +77,7 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 				Description:      s.flags.Description,
 				WorkingDirectory: s.flags.WorkDir,
 				Arguments:        strings.Split(s.flags.Args, " "),
+				Executable:       gfile.SelfPath(),
 			})
 
 			if err != nil {
