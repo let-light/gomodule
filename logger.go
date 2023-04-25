@@ -4,9 +4,10 @@ import (
 	"context"
 	"io"
 	"os"
-	"path"
 	"strings"
+	"time"
 
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,12 +16,18 @@ type Fields logrus.Fields
 var loggerInstance *loggerModule
 
 type loggerSettings struct {
-	Formatter    string `mapstructure:"formatter"`
-	Format       string `mapstructure:"format"`
-	File         string `mapstructure:"file"`
-	Console      bool   `mapstructure:"console"`
-	Level        string `mapstructure:"level"`
-	ReportCaller bool   `mapstructure:"reportCaller"`
+	Formatter     string `mapstructure:"formatter"`
+	Format        string `mapstructure:"format"`
+	File          string `mapstructure:"file"`
+	Console       bool   `mapstructure:"console"`
+	Color         bool   `mapstructure:"color"`
+	Level         string `mapstructure:"level"`
+	ReportCaller  bool   `mapstructure:"reportCaller"`
+	FilePattern   string `mapstructure:"filePattern"`
+	MaxAge        int    `mapstructure:"maxAge"`
+	RotationTime  int    `mapstructure:"rotationTime"`
+	RotationCount int    `mapstructure:"rotationCount"`
+	RotationSize  int    `mapstructure:"rotationSize"`
 }
 
 type loggerModule struct {
@@ -64,7 +71,8 @@ func (l *loggerModule) reloadSettings() error {
 	if strings.EqualFold(l.settings.Formatter, "text") {
 		logrus.SetFormatter(&logrus.TextFormatter{
 			FullTimestamp:   true,
-			ForceColors:     true,
+			ForceColors:     l.settings.Color && l.settings.Console,
+			DisableColors:   !l.settings.Color || !l.settings.Console,
 			TimestampFormat: l.settings.Format,
 		})
 	} else {
@@ -79,36 +87,46 @@ func (l *loggerModule) reloadSettings() error {
 		return err
 	}
 	logrus.SetLevel(level)
+	var writer *rotatelogs.RotateLogs
 
-	fd, err := createLogFile(l.settings.File)
-	if err != nil {
-		return err
+	filePattern := l.settings.File
+	if l.settings.FilePattern != "" {
+		filePattern += "." + l.settings.FilePattern
+	}
+
+	logrus.Info("filePattern ", filePattern)
+	if l.settings.MaxAge > 0 {
+		writer, err = rotatelogs.New(
+			filePattern,
+			rotatelogs.WithLinkName(l.settings.File),
+			rotatelogs.WithMaxAge(time.Duration(l.settings.MaxAge)*time.Hour),
+			rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
+			rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
+		)
+		if err != nil {
+			return err
+		}
+	} else if l.settings.RotationCount > 0 {
+		writer, err = rotatelogs.New(
+			filePattern,
+			rotatelogs.WithLinkName(l.settings.File),
+			rotatelogs.WithRotationCount(uint(l.settings.RotationCount)),
+			rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
+			rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	var output io.Writer
 	if l.settings.Console {
-		output = io.MultiWriter(fd, os.Stdout)
+		output = io.MultiWriter(writer, os.Stdout)
 	} else {
-		output = io.MultiWriter(fd)
+		output = io.MultiWriter(writer)
 	}
 
 	logrus.SetOutput(output)
 
 	return nil
-}
-
-func createLogFile(file string) (*os.File, error) {
-	dir := path.Dir(file)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-			return nil, err
-		}
-	}
-
-	fd, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	return fd, nil
 }

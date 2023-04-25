@@ -4,7 +4,13 @@ logger: {
   formatter: text, # text or json
   format: '2006-01-02 15:04:05',
   console: true,
+  color: true,
   reportcaller: false,
+  maxAge: 72,
+  rotationTime: 24,
+  rotationCount: 5,
+  rotationSize: 100,
+  filePattern: '%Y%m%d',
 }
 
 SimpleModule: {
