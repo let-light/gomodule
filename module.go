@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var manager *Manager
+var defaultmanager *Manager
 
 type ModuleInfo struct {
 	module   IModule
@@ -28,39 +28,23 @@ type Manager struct {
 	once           sync.Once
 	ctx            context.Context
 	cancel         context.CancelFunc
-	wg             *sync.WaitGroup
+	wg             sync.WaitGroup
 	defaultModules []*ModuleInfo
-	logger         *logrus.Entry
+	plogger        *logrus.Entry
+	roomCmdRun     bool
+	servctl        *servctl
 }
 
 type IModule interface {
-	InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error)
+	InitModule(ctx context.Context, m *Manager) (interface{}, error)
 	InitCommand() ([]*cobra.Command, error)
 	ConfigChanged()
-	RootCommand(cmd *cobra.Command, args []string)
+	PreModuleRun()
+	ModuleRun()
 }
 
 func init() {
-	manager = NewManager()
-}
-
-type DefaultModule struct {
-}
-
-func (dm *DefaultModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	return nil, nil
-}
-
-func (dm *DefaultModule) InitCommand() ([]*cobra.Command, error) {
-	return nil, nil
-}
-
-func (dm *DefaultModule) ConfigChanged() {
-
-}
-
-func (dm *DefaultModule) RootCommand(cmd *cobra.Command, args []string) {
-
+	defaultmanager = NewManager()
 }
 
 func (m *Manager) sysSignal() {
@@ -79,13 +63,13 @@ func (m *Manager) sysSignal() {
 
 	sig := <-ch
 
-	logger().Infof("receive signal: %v", sig)
+	m.logger().Infof("receive signal: %v", sig)
 
 	m.cancel()
 }
 
-func logger() *logrus.Entry {
-	return manager.logger
+func (m *Manager) logger() *logrus.Entry {
+	return m.plogger
 }
 
 func NewManager() *Manager {
@@ -93,38 +77,33 @@ func NewManager() *Manager {
 		modules:        make([]*ModuleInfo, 0),
 		rootCmd:        &cobra.Command{},
 		defaultModules: make([]*ModuleInfo, 0),
-		logger:         logrus.WithField("module", "manager"),
+		plogger:        logrus.WithField("module", "manager"),
+		roomCmdRun:     false,
 	}
 
-	m.wg = &sync.WaitGroup{}
-	m.ctx, m.cancel = context.WithCancel(context.Background())
+	m.servctl = newServctl(m)
 
 	m.rootCmd.Run = func(cmd *cobra.Command, args []string) {
-		for _, mi := range manager.modules {
-			mi.module.RootCommand(cmd, args)
-		}
+		m.roomCmdRun = true
 	}
-
-	go m.sysSignal()
-
 	return m
 }
 
-func initDefaultModules() {
-	for _, dmi := range manager.defaultModules {
-		for _, mi := range manager.modules {
+func (m *Manager) initDefaultModules() {
+	for _, dmi := range m.defaultModules {
+		for _, mi := range m.modules {
 			if mi.name == dmi.name {
-				logger().Panic("module[%+v] is existed\n", dmi)
+				m.logger().Panic(fmt.Errorf("module[%s] is existed", dmi.name))
 			}
 		}
 	}
 
-	modules := manager.defaultModules
-	modules = append(modules, manager.modules...)
-	manager.modules = modules
+	modules := m.defaultModules
+	modules = append(modules, m.modules...)
+	m.modules = modules
 }
 
-func Register(module IModule) error {
+func (m *Manager) Register(module IModule) error {
 	if module == nil {
 		return fmt.Errorf("module is nil")
 	}
@@ -139,18 +118,18 @@ func Register(module IModule) error {
 	}
 
 	name := t.Elem().Name()
-	for _, mi := range manager.modules {
+	for _, mi := range m.modules {
 		if mi.name == t.Elem().Name() {
 			return fmt.Errorf("module[%+v] is existed", mi)
 		}
 	}
 
-	logger().Infof("get module named: %s", name)
+	m.logger().Debugf("get module named: %s", name)
 
-	return RegisterWithName(module, name)
+	return m.RegisterWithName(module, name)
 }
 
-func RegisterDefaultModule(module IModule) error {
+func (m *Manager) RegisterDefaultModule(module IModule) error {
 	if module == nil {
 		return fmt.Errorf("module is nil")
 	}
@@ -165,131 +144,235 @@ func RegisterDefaultModule(module IModule) error {
 	}
 
 	name := t.Elem().Name()
-	for _, mi := range manager.modules {
+	for _, mi := range m.modules {
 		if mi.name == name {
 			return fmt.Errorf("module[%+v] is existed", mi)
 		}
 	}
 
-	logger().Infof("get module named: %s", name)
+	m.logger().Debugf("get module named: %s", name)
 
-	return RegisterDefaultModuleWithName(module, name)
+	return m.RegisterDefaultModuleWithName(module, name)
 }
 
-func RegisterDefaultModules() {
-	if e := RegisterDefaultModuleWithName(SyServiceModule(), "syservice"); e != nil {
-		logger().Panic(e)
-	}
-
+func (m *Manager) RegisterDefaultModules() {
 	if e := RegisterDefaultModuleWithName(ConfigModule(), "config"); e != nil {
-		logger().Panic(e)
+		m.logger().Panic(e)
 	}
 
 	if e := RegisterDefaultModuleWithName(LoggerModule(), "logger"); e != nil {
-		logger().Panic(e)
+		m.logger().Panic(e)
 	}
 }
 
-func RegisterWithName(module IModule, name string) error {
+func (m *Manager) RegisterWithName(module IModule, name string) error {
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
-		logger().Info("module must be pointer")
+		m.logger().Error("module must be pointer")
 		return fmt.Errorf("module must be pointer")
 	}
 
 	if t.Elem().Kind() != reflect.Struct {
-		logger().Info("module must be struct")
+		m.logger().Error("module must be struct")
 		return fmt.Errorf("module must be struct")
 	}
 
-	manager.modules = append(manager.modules, &ModuleInfo{
+	m.modules = append(m.modules, &ModuleInfo{
 		module: module,
 		cmds:   make([]*cobra.Command, 0),
 		name:   name,
 	})
 
-	logger().Infof("register module: %s", name)
+	m.logger().Infof("register module: %s", name)
 
 	return nil
 }
 
-func RegisterDefaultModuleWithName(module IModule, name string) error {
+func (m *Manager) RegisterDefaultModuleWithName(module IModule, name string) error {
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
-		logger().Info("module must be pointer")
+		m.logger().Error("module must be pointer")
 		return fmt.Errorf("module must be pointer")
 	}
 
 	if t.Elem().Kind() != reflect.Struct {
-		logger().Info("module must be struct")
+		m.logger().Error("module must be struct")
 		return fmt.Errorf("module must be struct")
 	}
 
-	manager.defaultModules = append(manager.defaultModules, &ModuleInfo{
+	m.defaultModules = append(m.defaultModules, &ModuleInfo{
 		module: module,
 		cmds:   make([]*cobra.Command, 0),
 		name:   name,
 	})
 
-	logger().Infof("register default module: %s", name)
+	m.logger().Debugf("register default module: %s", name)
 
 	return nil
 }
 
-func Launch(ctx context.Context) error {
-	manager.ctx, manager.cancel = context.WithCancel(ctx)
-	manager.once.Do(initDefaultModules)
+func (m *Manager) Launch(ctx context.Context) error {
+	if e := m.initModules(ctx); e != nil {
+		return e
+	}
+	go m.sysSignal()
 
-	logger().Info("launch manager, modules: ", len(manager.modules))
-	logger().Info("launch manager, default modules: ", len(manager.defaultModules))
+	m.logger().Debugf("launch modules")
+
+	if e := m.execute(); e != nil {
+		return e
+	}
+
+	if m.roomCmdRun {
+		m.run()
+	}
+
+	return nil
+}
+
+func (m *Manager) Run(ctx context.Context) error {
+	if e := m.Launch(ctx); e != nil {
+		return e
+	}
+
+	m.Wait()
+
+	return nil
+}
+
+func (m *Manager) GetRootCmd() *cobra.Command {
+	return m.rootCmd
+}
+
+func (m *Manager) Wait() {
+	go func() {
+		m.wg.Wait()
+		m.logger().Debug("all modules run done")
+		m.cancel()
+	}()
+
+	<-m.ctx.Done()
+}
+
+func (m *Manager) configChanged() {
+	for _, mi := range m.modules {
+		mi.module.ConfigChanged()
+	}
+}
+
+func (m *Manager) initWaitGroup() {
+	m.once.Do(func() {
+		m.logger().Debug("init wait group")
+		m.wg.Add(len(m.modules))
+	})
+}
+
+func (m *Manager) run() {
+	for _, mi := range m.modules {
+		m.logger().Debugf("pre module run: %s", mi.name)
+		mi.module.PreModuleRun()
+	}
+
+	m.initWaitGroup()
+
+	for _, mi := range m.modules {
+		m.logger().Debugf("module run: %s", mi.name)
+		go func(mi *ModuleInfo) {
+			defer m.wg.Done()
+			mi.module.ModuleRun()
+		}(mi)
+	}
+}
+
+func (m *Manager) execute() error {
+	return m.rootCmd.Execute()
+}
+
+func (m *Manager) initModules(ctx context.Context) error {
+	m.ctx, m.cancel = context.WithCancel(ctx)
+	m.initDefaultModules()
+
+	m.logger().Debug("modules: ", len(m.modules))
+	m.logger().Debug("default modules: ", len(m.defaultModules))
 
 	// init module
-	for _, mi := range manager.modules {
-		settings, err := mi.module.InitModule(ctx, manager.wg)
+	for _, mi := range m.modules {
+		settings, err := mi.module.InitModule(m.ctx, m)
 		if err != nil {
 			return err
 		} else if settings == nil {
-			logger().Debugf("module[%s] settings is nil", mi.name)
+			m.logger().Debugf("module[%s] settings is nil", mi.name)
 		}
 		mi.settings = settings
 	}
 
-	logger().Debugf("launch manager, modules: %+v", manager.modules)
+	m.logger().Debugf("launch defaultmanager, modules: %+v", m.modules)
 
 	// init command
-	for _, mi := range manager.modules {
+	for _, mi := range m.modules {
 		cmds, err := mi.module.InitCommand()
 		if err != nil {
 			return err
 		}
 
 		for _, cmd := range cmds {
-			manager.rootCmd.AddCommand(cmd)
+			m.rootCmd.AddCommand(cmd)
 		}
 
 		mi.cmds = cmds
 	}
 
-	manager.rootCmd.Execute()
-
 	return nil
 }
 
+func (m *Manager) Stop() {
+	m.cancel()
+}
+
+func (m *Manager) Serv() *servctl {
+	return m.servctl
+}
+
+func Register(module IModule) error {
+	return defaultmanager.Register(module)
+}
+
+func RegisterDefaultModule(module IModule) error {
+	return defaultmanager.RegisterDefaultModule(module)
+}
+
+func RegisterDefaultModules() {
+	defaultmanager.RegisterDefaultModules()
+}
+
+func RegisterWithName(module IModule, name string) error {
+	return defaultmanager.RegisterWithName(module, name)
+}
+
+func RegisterDefaultModuleWithName(module IModule, name string) error {
+	return defaultmanager.RegisterDefaultModuleWithName(module, name)
+}
+
+func Launch(ctx context.Context) error {
+	return defaultmanager.Launch(ctx)
+}
+
+func Run(ctx context.Context) error {
+	return defaultmanager.Run(ctx)
+}
+
 func GetRootCmd() *cobra.Command {
-	return manager.rootCmd
+	return defaultmanager.GetRootCmd()
 }
 
 func Wait() {
-	go func() {
-		manager.wg.Wait()
-		manager.cancel()
-	}()
-
-	<-manager.ctx.Done()
+	defaultmanager.Wait()
 }
 
-func ConfigChanged() {
-	for _, mi := range manager.modules {
-		mi.module.ConfigChanged()
-	}
+func Stop() {
+	defaultmanager.Stop()
+}
+
+func Serv() *servctl {
+	return defaultmanager.Serv()
 }

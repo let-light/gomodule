@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -36,11 +36,11 @@ type configModule struct {
 	DefaultModule
 	flags    configFlags
 	config   *viper.Viper
-	wg       *sync.WaitGroup
 	settings ConfigSettings
 	ctx      context.Context
 	mtx      sync.Mutex
 	logger   *logrus.Entry
+	m        *Manager
 }
 
 func init() {
@@ -61,14 +61,14 @@ func (c *configModule) Viper() *viper.Viper {
 	return c.config
 }
 
-func (c *configModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
+func (c *configModule) InitModule(ctx context.Context, m *Manager) (interface{}, error) {
 	c.ctx = ctx
-	c.wg = wg
+	c.m = m
 	return &c.settings, nil
 }
 
 func (c *configModule) InitCommand() ([]*cobra.Command, error) {
-	c.Logger().Info("init config module")
+	c.Logger().Debug("init config module")
 	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "", "Load config file")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Consul, "cfg.consul", "", "Load config file from consul")
 	GetRootCmd().PersistentFlags().StringVar(&c.flags.Etcd, "cfg.etcd", "", "Load config file from etcd")
@@ -115,10 +115,10 @@ func (c *configModule) loadConfigFromLocal() {
 			panic(fmt.Errorf("fatal error config file, %s", err))
 		}
 
-		c.Logger().Info("Config file changed:", e.Name)
+		c.Logger().Debug("Config file changed:", e.Name)
 		c.reloadSettings()
 
-		ConfigChanged()
+		c.m.configChanged()
 	})
 	c.config.WatchConfig()
 }
@@ -178,7 +178,7 @@ func (c *configModule) getRemoteFileContent() ([]byte, string, error) {
 
 	defer resp.Body.Close()
 
-	configData, err := ioutil.ReadAll(resp.Body)
+	configData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		// handle error
 		return nil, "", fmt.Errorf("read config error, %s", err)
@@ -242,7 +242,7 @@ func (c *configModule) loadConfigFromRemoteFile() {
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
-				c.Logger().Info("loadConfigFromRemoteFile error:", err)
+				c.Logger().Error("loadConfigFromRemoteFile error:", err)
 			}
 		}()
 
@@ -257,7 +257,7 @@ func (c *configModule) loadConfigFromRemoteFile() {
 	}()
 }
 
-func (c *configModule) RootCommand(cmd *cobra.Command, args []string) {
+func (c *configModule) PreModuleRun() {
 	c.config = viper.New()
 
 	if c.flags.RemoteFile != "" {
@@ -273,18 +273,18 @@ func (c *configModule) reloadSettings() error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	c.Logger().Info("reload settings, modules:", len(manager.modules))
-	for _, mi := range manager.modules {
+	c.Logger().Debug("reload settings, modules:", len(c.m.modules))
+	for _, mi := range c.m.modules {
 		if mi.settings == nil {
 			continue
 		}
-		c.Logger().Info("reload settings:", mi.name)
+		c.Logger().Debug("reload settings:", mi.name)
 		if err := c.config.UnmarshalKey(mi.name, mi.settings); err != nil {
 			return fmt.Errorf("unmarshal config error, %s", err)
 		}
 	}
 
-	ConfigChanged()
+	c.m.configChanged()
 
 	return nil
 }

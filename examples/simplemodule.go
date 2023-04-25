@@ -20,11 +20,12 @@ type Settings struct {
 
 type SimpleModule struct {
 	gomodule.DefaultModule
-	flags    *MainFlags
-	settings *Settings
-	wg       *sync.WaitGroup
-	ctx      context.Context
-	logger   *logrus.Entry
+	flags       *MainFlags
+	presettings Settings
+	settings    *Settings
+	ctx         context.Context
+	logger      *logrus.Entry
+	mutex       sync.RWMutex
 }
 
 var instance *SimpleModule
@@ -47,48 +48,69 @@ func (s *SimpleModule) InitCommand() ([]*cobra.Command, error) {
 		Use:   "desc",
 		Short: "simple module",
 		Run: func(cmd *cobra.Command, args []string) {
-			s.Logger().Info("simple module command run ...")
+			for {
+				select {
+				case <-s.ctx.Done():
+					s.Logger().Info("simple module command done")
+					return
+				case <-time.After(time.Second):
+					s.Logger().Info("simple module command run ...")
+				}
+			}
 		},
 	}
 
 	return []*cobra.Command{cmd}, nil
 }
 
-func (s *SimpleModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	s.wg = wg
+func (s *SimpleModule) InitModule(ctx context.Context, m *gomodule.Manager) (interface{}, error) {
 	s.ctx = ctx
+	s.Manager = m
+
 	s.Logger().Info("init simple module")
-	return s.settings, nil
+	return &s.presettings, nil
 }
 
-func (s *SimpleModule) RootCommand(cmd *cobra.Command, args []string) {
-	s.Logger().Info("root command")
+func (s *SimpleModule) ConfigChanged() {
+	s.Logger().Info("simple module config changed")
+	if err := s.settings == nil; err {
+		s.settings = &Settings{}
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	*s.settings = s.presettings
+
+	s.Logger().Info("simple module config changed done")
+}
+
+func (s *SimpleModule) SafeSettings() Settings {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	return *s.settings
+}
+
+func (s *SimpleModule) ModuleRun() {
+	s.Logger().Info("simple module run ...")
 
 	s.Logger().Info("settings: ", s.settings.Test)
-	done := make(chan struct{})
-	s.wg.Add(1)
-	go func() {
-		for {
-			select {
-			case <-s.ctx.Done():
-				s.Logger().Info("all module done")
-				done <- struct{}{}
-			case <-done:
-				s.Logger().Info("simple module done")
-				s.wg.Done()
-				return
-			case <-time.After(time.Second):
-				s.Logger().Info("tick...")
-			}
+	for {
+		select {
+		case <-s.ctx.Done():
+			s.Logger().Info("all module done")
+			return
+		case <-time.After(time.Second):
+			s.Logger().Infof("tick, settings: %+v...", s.SafeSettings())
 		}
-	}()
-
+	}
 }
 
 func main() {
 	gomodule.RegisterDefaultModule(configcenter.CC)
 	gomodule.Register(instance)
 	gomodule.RegisterDefaultModules()
-	gomodule.Launch(context.Background())
-	gomodule.Wait()
+	gomodule.Serv().Run(context.Background())
+	// gomodule.Wait()
 }

@@ -2,8 +2,6 @@ package configcenter
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"github.com/gogf/gf/frame/g"
 	"github.com/gogf/gf/net/ghttp"
@@ -32,8 +30,8 @@ type RemoteConfig struct {
 
 type ConfigCenter struct {
 	gomodule.DefaultModule
-	wg  *sync.WaitGroup
 	ctx context.Context
+	s   *ghttp.Server
 }
 
 var CC *ConfigCenter
@@ -42,8 +40,7 @@ func init() {
 	CC = &ConfigCenter{}
 }
 
-func (c *ConfigCenter) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	c.wg = wg
+func (c *ConfigCenter) InitModule(ctx context.Context, _ *gomodule.Manager) (interface{}, error) {
 	c.ctx = ctx
 	logrus.Info("init configcenter module")
 	return nil, nil
@@ -58,9 +55,8 @@ func (c *ConfigCenter) ConfigChanged() {
 
 }
 
-func (c *ConfigCenter) RootCommand(cmd *cobra.Command, args []string) {
-	c.wg.Add(1)
-	logrus.Info("root command")
+func (c *ConfigCenter) PreModuleRun() {
+	logrus.Info("pre module run")
 	s := g.Server()
 	s.BindHandler("/", func(r *ghttp.Request) {
 		r.Response.WriteJsonExit(&RemoteConfig{
@@ -79,17 +75,15 @@ func (c *ConfigCenter) RootCommand(cmd *cobra.Command, args []string) {
 	})
 	s.SetPort(9990)
 	go func() {
-		s.Run()
-		c.wg.Done()
-		logrus.Info("config center server done")
-	}()
-
-	go func() {
 		<-c.ctx.Done()
 		logrus.Info("config center done")
 		s.Shutdown()
 	}()
 
-	// Wait for the HTTP server to start.
-	time.Sleep(time.Second * 1)
+	c.s = s
+}
+
+func (c *ConfigCenter) ModuleRun() {
+	logrus.Info("module run")
+	c.s.Run()
 }

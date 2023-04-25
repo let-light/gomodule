@@ -6,7 +6,6 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -45,8 +44,8 @@ func (l *loggerModule) Logger() *logrus.Entry {
 	return l.logger
 }
 
-func (l *loggerModule) InitModule(ctx context.Context, wg *sync.WaitGroup) (interface{}, error) {
-	l.Logger().Infof("init logger module")
+func (l *loggerModule) InitModule(ctx context.Context, _ *Manager) (interface{}, error) {
+	l.Logger().Debug("init logger module")
 	return &l.presettings, nil
 }
 
@@ -106,7 +105,7 @@ func createLogFile(file string) (*os.File, error) {
 		}
 	}
 
-	fd, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	fd, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
 	}

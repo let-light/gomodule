@@ -185,8 +185,16 @@ func (s *syservice) InitCommand() ([]*cobra.Command, error) {
 
 func (s *syservice) RootCommand(cmd *cobra.Command, args []string) {
 	if s.svc == nil {
-		return
+		var err error
+		s.svc, err = service.New(s, &service.Config{})
+
+		if err != nil {
+			s.Logger().Error("new service failed:", err)
+			return
+		}
 	}
+
+	s.Logger().Info("sysservice start, service name:", s.flags.Service)
 
 	go s.svc.Run()
 }
