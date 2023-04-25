@@ -93,7 +93,7 @@ INFO[0000] simple module command run ...                 module=simple
 
 ```bash
 go build simplemodule
-sudo ./simplemodule service --install --service=gomodule --workdir=/var/gomodule
+sudo ./simplemodule serv --ctrl=install --name=gomodule --workdir=/var/gomodule
 ```
 
 ```log
@@ -118,17 +118,17 @@ INFO[0000] service install success                       module=syserver
 ```
 
 ```bash
-sudo ./simplemodule service --start --service=gomodule --workdir=/var/gomodule
+sudo ./simplemodule serv --ctrl=start --name=gomodule
 ```
 
 ```bash
-sudo ./simplemodule service --restart --service=gomodule --workdir=/var/gomodule
+sudo ./simplemodule serv --ctrl=restart --name=gomodule
 ```
 
 ```bash
-sudo ./simplemodule service --stop --service=gomodule --workdir=/var/gomodule
+sudo ./simplemodule serv --ctrl=stop --name=gomodule
 ```
 
 ```bash
-sudo ./simplemodule service --uninstall --service=gomodule --workdir=/var/gomodule
+sudo ./simplemodule serv --ctrl=uninstall --name=gomodule
 ```
