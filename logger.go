@@ -16,18 +16,19 @@ type Fields logrus.Fields
 var loggerInstance *loggerModule
 
 type loggerSettings struct {
-	Formatter     string `mapstructure:"formatter"`
-	Format        string `mapstructure:"format"`
-	File          string `mapstructure:"file"`
-	Console       bool   `mapstructure:"console"`
-	Color         bool   `mapstructure:"color"`
-	Level         string `mapstructure:"level"`
-	ReportCaller  bool   `mapstructure:"reportCaller"`
-	FilePattern   string `mapstructure:"filePattern"`
-	MaxAge        int    `mapstructure:"maxAge"`
-	RotationTime  int    `mapstructure:"rotationTime"`
-	RotationCount int    `mapstructure:"rotationCount"`
-	RotationSize  int    `mapstructure:"rotationSize"`
+	Formatter      string `mapstructure:"formatter"`
+	Format         string `mapstructure:"format"`
+	File           string `mapstructure:"file"`
+	Console        bool   `mapstructure:"console"`
+	Color          bool   `mapstructure:"color"`
+	Level          string `mapstructure:"level"`
+	ReportCaller   bool   `mapstructure:"reportCaller"`
+	FilePattern    string `mapstructure:"filePattern"`
+	MaxAge         int    `mapstructure:"maxAge"`
+	RotationTime   int    `mapstructure:"rotationTime"`
+	RotationCount  int    `mapstructure:"rotationCount"`
+	RotationSize   int    `mapstructure:"rotationSize"`
+	DisableSorting bool   `mapstructure:"disableSorting"`
 }
 
 type loggerModule struct {
@@ -74,6 +75,7 @@ func (l *loggerModule) reloadSettings() error {
 			ForceColors:     l.settings.Color && l.settings.Console,
 			DisableColors:   !l.settings.Color || !l.settings.Console,
 			TimestampFormat: l.settings.Format,
+			DisableSorting:  l.settings.DisableSorting,
 		})
 	} else {
 		logrus.SetFormatter(&logrus.JSONFormatter{
