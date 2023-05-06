@@ -28,7 +28,7 @@ func newServctl(m *Manager) *servctl {
 }
 
 func (s *servctl) Start(ss service.Service) error {
-	s.m.logger().Info("start service")
+	s.m.logger().Debug("start service")
 	s.m.run()
 	return nil
 }

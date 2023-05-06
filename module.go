@@ -183,7 +183,7 @@ func (m *Manager) RegisterWithName(module IModule, name string) error {
 		name:   name,
 	})
 
-	m.logger().Infof("register module: %s", name)
+	m.logger().Debugf("register module: %s", name)
 
 	return nil
 }

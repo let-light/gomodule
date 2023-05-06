@@ -90,7 +90,7 @@ func (c *configModule) loadConfigFromLocal() {
 		c.config.SetConfigName(gfile.Basename(c.flags.LocalFile))
 		c.config.SetConfigType(gfile.Ext(c.flags.LocalFile)[1:])
 	} else {
-		c.Logger().Info("default config file: config.yml (./config.yml or ./config/config.yml)")
+		c.Logger().Debug("default config file: config.yml (./config.yml or ./config/config.yml)")
 
 		pwd, err := os.Getwd()
 		if err != nil {

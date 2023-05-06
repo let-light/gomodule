@@ -96,7 +96,7 @@ func (l *loggerModule) reloadSettings() error {
 		filePattern += "." + l.settings.FilePattern
 	}
 
-	logrus.Info("filePattern ", filePattern)
+	logrus.Debug("filePattern ", filePattern)
 	if l.settings.MaxAge > 0 {
 		writer, err = rotatelogs.New(
 			filePattern,
