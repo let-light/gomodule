@@ -91,41 +91,65 @@ func (l *loggerModule) reloadSettings() error {
 	logrus.SetLevel(level)
 	var writer *rotatelogs.RotateLogs
 
-	filePattern := l.settings.File
-	if l.settings.FilePattern != "" {
-		filePattern += "." + l.settings.FilePattern
-	}
-
-	logrus.Debug("filePattern ", filePattern)
-	if l.settings.MaxAge > 0 {
-		writer, err = rotatelogs.New(
-			filePattern,
-			rotatelogs.WithLinkName(l.settings.File),
-			rotatelogs.WithMaxAge(time.Duration(l.settings.MaxAge)*time.Hour),
-			rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
-			rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
-		)
-		if err != nil {
-			return err
+	if l.settings.File != "" {
+		filePattern := l.settings.File
+		if l.settings.FilePattern != "" {
+			filePattern += "." + l.settings.FilePattern
 		}
-	} else if l.settings.RotationCount > 0 {
-		writer, err = rotatelogs.New(
-			filePattern,
-			rotatelogs.WithLinkName(l.settings.File),
-			rotatelogs.WithRotationCount(uint(l.settings.RotationCount)),
-			rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
-			rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
-		)
-		if err != nil {
-			return err
+
+		logrus.Debug("filePattern ", filePattern)
+		if l.settings.MaxAge > 0 {
+			if l.settings.RotationTime == 0 {
+				l.settings.RotationTime = 24
+			}
+			if l.settings.RotationSize == 0 {
+				l.settings.RotationSize = 100
+			}
+			writer, err = rotatelogs.New(
+				filePattern,
+				rotatelogs.WithLinkName(l.settings.File),
+				rotatelogs.WithMaxAge(time.Duration(l.settings.MaxAge)*time.Hour),
+				rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
+				rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
+			)
+			if err != nil {
+				return err
+			}
+		} else if l.settings.RotationCount > 0 {
+			if l.settings.RotationTime == 0 {
+				l.settings.RotationTime = 24
+			}
+
+			if l.settings.RotationSize == 0 {
+				l.settings.RotationSize = 100
+			}
+
+			if l.settings.RotationCount == 0 {
+				l.settings.RotationCount = 5
+			}
+
+			writer, err = rotatelogs.New(
+				filePattern,
+				rotatelogs.WithLinkName(l.settings.File),
+				rotatelogs.WithRotationCount(uint(l.settings.RotationCount)),
+				rotatelogs.WithRotationSize(int64(l.settings.RotationSize)*1024*1024),
+				rotatelogs.WithRotationTime(time.Duration(l.settings.RotationTime)*time.Hour),
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	var output io.Writer
-	if l.settings.Console {
+	if l.settings.Console && writer != nil {
 		output = io.MultiWriter(writer, os.Stdout)
+	} else if l.settings.Console {
+		output = os.Stdout
+	} else if writer != nil {
+		output = writer
 	} else {
-		output = io.MultiWriter(writer)
+		return nil
 	}
 
 	logrus.SetOutput(output)
