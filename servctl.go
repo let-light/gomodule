@@ -28,7 +28,6 @@ func newServctl(m *Manager) *servctl {
 }
 
 func (s *servctl) Start(ss service.Service) error {
-	s.m.logger().Debug("start service")
 	s.m.run()
 	return nil
 }
@@ -46,7 +45,6 @@ func (s *servctl) Run(ctx context.Context) {
 		Short: "service control",
 		Run: func(cmd *cobra.Command, _ []string) {
 			s.cmdRun = true
-			s.m.logger().Debug("run as service")
 			args := []string{
 				"--serv.name=" + s.flags.name,
 				"--serv.workdir=" + s.flags.workdir,
@@ -68,7 +66,7 @@ func (s *servctl) Run(ctx context.Context) {
 			})
 
 			if err != nil {
-				s.m.logger().Panic(err)
+				panic(err)
 			}
 
 			if s.flags.ctrl == "program" {
@@ -77,10 +75,8 @@ func (s *servctl) Run(ctx context.Context) {
 				return
 			}
 
-			s.m.logger().Debugf("control service: %s", s.flags.ctrl)
 			if e := service.Control(svc, s.flags.ctrl); e != nil {
-				s.m.logger().WithError(e).Error("control service failed")
-				s.m.logger().Panic(e)
+				panic(e)
 			}
 		},
 	}
@@ -99,13 +95,13 @@ func (s *servctl) Run(ctx context.Context) {
 	s.m.GetRootCmd().PersistentFlags().StringVar(&s.flags.workdir, "serv.workdir", "", "service workdir, don't use in program mode")
 
 	if e := s.m.initModules(s.ctx); e != nil {
-		s.m.logger().Panic(e)
+		panic(e)
 	}
 
 	go s.m.sysSignal()
 
 	if e := s.m.execute(); e != nil {
-		s.m.logger().Panic(e)
+		panic(e)
 	}
 
 	if !s.m.roomCmdRun {
@@ -121,15 +117,12 @@ func (s *servctl) Run(ctx context.Context) {
 		})
 
 		if err != nil {
-			s.m.logger().Panic(err)
+			panic(err)
 		}
 		os.Chdir(s.flags.workdir)
 
-		s.m.logger().Debug("run as service")
 		svc.Run()
-		s.m.logger().Debug("service exit")
 	} else {
-		s.m.logger().Debug("run as program")
 		s.m.run()
 		s.m.Wait()
 	}
