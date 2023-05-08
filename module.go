@@ -9,7 +9,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +29,6 @@ type Manager struct {
 	cancel         context.CancelFunc
 	wg             sync.WaitGroup
 	defaultModules []*ModuleInfo
-	plogger        *logrus.Entry
 	roomCmdRun     bool
 	servctl        *servctl
 }
@@ -61,15 +59,9 @@ func (m *Manager) sysSignal() {
 		syscall.SIGTERM, // software termination signal from kill
 	)
 
-	sig := <-ch
-
-	m.logger().Infof("receive signal: %v", sig)
+	<-ch
 
 	m.cancel()
-}
-
-func (m *Manager) logger() *logrus.Entry {
-	return m.plogger
 }
 
 func NewManager() *Manager {
@@ -77,7 +69,6 @@ func NewManager() *Manager {
 		modules:        make([]*ModuleInfo, 0),
 		rootCmd:        &cobra.Command{},
 		defaultModules: make([]*ModuleInfo, 0),
-		plogger:        logrus.WithField("module", "manager"),
 		roomCmdRun:     false,
 	}
 
@@ -93,7 +84,7 @@ func (m *Manager) initDefaultModules() {
 	for _, dmi := range m.defaultModules {
 		for _, mi := range m.modules {
 			if mi.name == dmi.name {
-				m.logger().Panic(fmt.Errorf("module[%s] is existed", dmi.name))
+				panic(fmt.Errorf("module[%s] is existed", dmi.name))
 			}
 		}
 	}
@@ -124,8 +115,6 @@ func (m *Manager) Register(module IModule) error {
 		}
 	}
 
-	m.logger().Debugf("get module named: %s", name)
-
 	return m.RegisterWithName(module, name)
 }
 
@@ -150,30 +139,26 @@ func (m *Manager) RegisterDefaultModule(module IModule) error {
 		}
 	}
 
-	m.logger().Debugf("get module named: %s", name)
-
 	return m.RegisterDefaultModuleWithName(module, name)
 }
 
 func (m *Manager) RegisterDefaultModules() {
 	if e := RegisterDefaultModuleWithName(ConfigModule(), "config"); e != nil {
-		m.logger().Panic(e)
+		panic(e)
 	}
 
 	if e := RegisterDefaultModuleWithName(LoggerModule(), "logger"); e != nil {
-		m.logger().Panic(e)
+		panic(e)
 	}
 }
 
 func (m *Manager) RegisterWithName(module IModule, name string) error {
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
-		m.logger().Error("module must be pointer")
 		return fmt.Errorf("module must be pointer")
 	}
 
 	if t.Elem().Kind() != reflect.Struct {
-		m.logger().Error("module must be struct")
 		return fmt.Errorf("module must be struct")
 	}
 
@@ -183,20 +168,16 @@ func (m *Manager) RegisterWithName(module IModule, name string) error {
 		name:   name,
 	})
 
-	m.logger().Debugf("register module: %s", name)
-
 	return nil
 }
 
 func (m *Manager) RegisterDefaultModuleWithName(module IModule, name string) error {
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
-		m.logger().Error("module must be pointer")
 		return fmt.Errorf("module must be pointer")
 	}
 
 	if t.Elem().Kind() != reflect.Struct {
-		m.logger().Error("module must be struct")
 		return fmt.Errorf("module must be struct")
 	}
 
@@ -206,8 +187,6 @@ func (m *Manager) RegisterDefaultModuleWithName(module IModule, name string) err
 		name:   name,
 	})
 
-	m.logger().Debugf("register default module: %s", name)
-
 	return nil
 }
 
@@ -216,8 +195,6 @@ func (m *Manager) Launch(ctx context.Context) error {
 		return e
 	}
 	go m.sysSignal()
-
-	m.logger().Debugf("launch modules")
 
 	if e := m.execute(); e != nil {
 		return e
@@ -247,7 +224,6 @@ func (m *Manager) GetRootCmd() *cobra.Command {
 func (m *Manager) Wait() {
 	go func() {
 		m.wg.Wait()
-		m.logger().Debug("all modules run done")
 		m.cancel()
 	}()
 
@@ -262,21 +238,18 @@ func (m *Manager) configChanged() {
 
 func (m *Manager) initWaitGroup() {
 	m.once.Do(func() {
-		m.logger().Debug("init wait group")
 		m.wg.Add(len(m.modules))
 	})
 }
 
 func (m *Manager) run() {
 	for _, mi := range m.modules {
-		m.logger().Debugf("pre module run: %s", mi.name)
 		mi.module.PreModuleRun()
 	}
 
 	m.initWaitGroup()
 
 	for _, mi := range m.modules {
-		m.logger().Debugf("module run: %s", mi.name)
 		go func(mi *ModuleInfo) {
 			defer m.wg.Done()
 			mi.module.ModuleRun()
@@ -292,21 +265,14 @@ func (m *Manager) initModules(ctx context.Context) error {
 	m.ctx, m.cancel = context.WithCancel(ctx)
 	m.initDefaultModules()
 
-	m.logger().Debug("modules: ", len(m.modules))
-	m.logger().Debug("default modules: ", len(m.defaultModules))
-
 	// init module
 	for _, mi := range m.modules {
 		settings, err := mi.module.InitModule(m.ctx, m)
 		if err != nil {
 			return err
-		} else if settings == nil {
-			m.logger().Debugf("module[%s] settings is nil", mi.name)
 		}
 		mi.settings = settings
 	}
-
-	m.logger().Debugf("launch defaultmanager, modules: %+v", m.modules)
 
 	// init command
 	for _, mi := range m.modules {
