@@ -84,7 +84,7 @@ func (m *Manager) initDefaultModules() {
 	for _, dmi := range m.defaultModules {
 		for _, mi := range m.modules {
 			if mi.name == dmi.name {
-				panic(fmt.Errorf("module[%s] is existed", dmi.name))
+				panic(fmt.Errorf("module[%s] already exists", dmi.name))
 			}
 		}
 	}
@@ -109,11 +109,6 @@ func (m *Manager) Register(module IModule) error {
 	}
 
 	name := t.Elem().Name()
-	for _, mi := range m.modules {
-		if mi.name == t.Elem().Name() {
-			return fmt.Errorf("module[%+v] is existed", mi)
-		}
-	}
 
 	return m.RegisterWithName(module, name)
 }
@@ -133,11 +128,6 @@ func (m *Manager) RegisterDefaultModule(module IModule) error {
 	}
 
 	name := t.Elem().Name()
-	for _, mi := range m.modules {
-		if mi.name == name {
-			return fmt.Errorf("module[%+v] is existed", mi)
-		}
-	}
 
 	return m.RegisterDefaultModuleWithName(module, name)
 }
@@ -162,6 +152,12 @@ func (m *Manager) RegisterWithName(module IModule, name string) error {
 		return fmt.Errorf("module must be struct")
 	}
 
+	for _, mi := range m.modules {
+		if mi.name == t.Elem().Name() {
+			return fmt.Errorf("module[%+v] already exists", mi)
+		}
+	}
+
 	m.modules = append(m.modules, &ModuleInfo{
 		module: module,
 		cmds:   make([]*cobra.Command, 0),
@@ -179,6 +175,12 @@ func (m *Manager) RegisterDefaultModuleWithName(module IModule, name string) err
 
 	if t.Elem().Kind() != reflect.Struct {
 		return fmt.Errorf("module must be struct")
+	}
+
+	for _, mi := range m.defaultModules {
+		if mi.name == name {
+			return fmt.Errorf("module[%+v] already exists", mi)
+		}
 	}
 
 	m.defaultModules = append(m.defaultModules, &ModuleInfo{
