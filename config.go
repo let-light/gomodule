@@ -19,7 +19,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var configInstance *configModule
+var configInstance configModule
 
 type ConfigSettings struct {
 }
@@ -34,23 +34,22 @@ type configFlags struct {
 
 type configModule struct {
 	DefaultModule
-	flags    configFlags
-	config   *viper.Viper
-	settings ConfigSettings
-	ctx      context.Context
-	mtx      sync.Mutex
-	logger   *logrus.Entry
-	m        *Manager
+	flags       configFlags
+	config      *viper.Viper
+	settings    ConfigSettings
+	ctx         context.Context
+	mtx         sync.Mutex
+	logger      *logrus.Entry
+	m           *Manager
+	dynamicConf map[string]interface{}
 }
 
 func init() {
-	configInstance = &configModule{
-		logger: logrus.WithField("module", "config"),
-	}
+	configInstance.logger = logrus.WithField("module", "config")
 }
 
 func ConfigModule() *configModule {
-	return configInstance
+	return &configInstance
 }
 
 func (c *configModule) Logger() *logrus.Entry {
@@ -284,7 +283,28 @@ func (c *configModule) reloadSettings() error {
 		}
 	}
 
+	for name, val := range c.dynamicConf {
+		if err := c.config.UnmarshalKey(name, val); err != nil {
+			return fmt.Errorf("unmarshal config error, %s", err)
+		}
+	}
+
 	c.m.configChanged()
 
 	return nil
+}
+
+func (c *configModule) RegisterConfig(name string, val interface{}) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	if c.dynamicConf == nil {
+		c.dynamicConf = make(map[string]interface{})
+	}
+
+	c.dynamicConf[name] = val
+}
+
+func RegisterConfig(name string, val interface{}) {
+	configInstance.RegisterConfig(name, val)
 }
