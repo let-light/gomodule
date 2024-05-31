@@ -31,6 +31,7 @@ type Manager struct {
 	defaultModules []*ModuleInfo
 	roomCmdRun     bool
 	servctl        *servctl
+	//featureResolutions []resolution
 }
 
 type IModule interface {
@@ -39,6 +40,7 @@ type IModule interface {
 	ConfigChanged()
 	PreModuleRun()
 	ModuleRun()
+	Type() interface{}
 }
 
 func init() {
@@ -299,6 +301,93 @@ func (m *Manager) Stop() {
 
 func (m *Manager) Serv() *servctl {
 	return m.servctl
+}
+
+type resolution struct {
+	deps     []reflect.Type
+	callback interface{}
+}
+
+func getFeature(allFeatures []IModule, t reflect.Type) IModule {
+	for _, m := range allFeatures {
+		if reflect.TypeOf(m.Type()) == t {
+			return m
+		}
+	}
+	return nil
+}
+
+func (r *resolution) resolve(allFeatures []IModule) (bool, error) {
+	var ms []IModule
+	for _, d := range r.deps {
+		m := getFeature(allFeatures, d)
+		if m == nil {
+			return false, nil
+		}
+		ms = append(ms, m)
+	}
+
+	callback := reflect.ValueOf(r.callback)
+	var input []reflect.Value
+	callbackType := callback.Type()
+	for i := 0; i < callbackType.NumIn(); i++ {
+		pt := callbackType.In(i)
+		for _, m := range ms {
+			if reflect.TypeOf(m).AssignableTo(pt) {
+				input = append(input, reflect.ValueOf(m))
+				break
+			}
+		}
+	}
+
+	if len(input) != callbackType.NumIn() {
+		panic("Can't get all input parameters")
+	}
+
+	var err error
+	ret := callback.Call(input)
+	errInterface := reflect.TypeOf((*error)(nil)).Elem()
+	for i := len(ret) - 1; i >= 0; i-- {
+		if ret[i].Type() == errInterface {
+			v := ret[i].Interface()
+			if v != nil {
+				err = v.(error)
+			}
+			break
+		}
+	}
+
+	return true, err
+}
+
+func (m *Manager) RequireFeatures(callback interface{}) error {
+	callbackType := reflect.TypeOf(callback)
+	if callbackType.Kind() != reflect.Func {
+		panic("not a function")
+	}
+
+	var featureTypes []reflect.Type
+	for i := 0; i < callbackType.NumIn(); i++ {
+		featureTypes = append(featureTypes, reflect.PointerTo(callbackType.In(i)))
+	}
+
+	r := resolution{
+		deps:     featureTypes,
+		callback: callback,
+	}
+
+	allFeatures := make([]IModule, 0)
+	for _, mi := range m.modules {
+		allFeatures = append(allFeatures, mi.module)
+	}
+
+	if finished, err := r.resolve(allFeatures); finished {
+		return err
+	}
+
+	//m.featureResolutions = append(m.featureResolutions, r)
+
+	return fmt.Errorf("can't resolve all dependencies")
 }
 
 func Register(module IModule) error {

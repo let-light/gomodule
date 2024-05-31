@@ -66,6 +66,10 @@ func (c *configModule) InitModule(ctx context.Context, m *Manager) (interface{},
 	return &c.settings, nil
 }
 
+func (c *configModule) Type() interface{} {
+	return c
+}
+
 func (c *configModule) InitCommand() ([]*cobra.Command, error) {
 	c.Logger().Debug("init config module")
 	GetRootCmd().PersistentFlags().StringVarP(&c.flags.LocalFile, "cfg.local", "c", "", "Load config file")

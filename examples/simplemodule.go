@@ -7,6 +7,7 @@ import (
 
 	"github.com/let-light/gomodule"
 	"github.com/let-light/gomodule/examples/configcenter"
+	feature_configcenter "github.com/let-light/gomodule/examples/features/configcenter"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -67,6 +68,10 @@ func (s *SimpleModule) InitModule(ctx context.Context, m *gomodule.Manager) (int
 	s.ctx = ctx
 	s.Manager = m
 
+	m.RequireFeatures(func(cc feature_configcenter.Feature, ss *SimpleModule) {
+		cc.HelloWorld()
+		ss.Logger().Info("require modules done")
+	})
 	s.Logger().Info("init simple module")
 	return &s.presettings, nil
 }
@@ -105,6 +110,10 @@ func (s *SimpleModule) ModuleRun() {
 			s.Logger().Infof("tick, settings: %+v...", s.SafeSettings())
 		}
 	}
+}
+
+func (s *SimpleModule) Type() interface{} {
+	return (**SimpleModule)(nil)
 }
 
 func main() {

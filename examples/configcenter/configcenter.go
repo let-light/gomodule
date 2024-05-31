@@ -6,6 +6,7 @@ import (
 	"github.com/gogf/gf/frame/g"
 	"github.com/gogf/gf/net/ghttp"
 	"github.com/let-light/gomodule"
+	feature_configcenter "github.com/let-light/gomodule/examples/features/configcenter"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -86,4 +87,12 @@ func (c *ConfigCenter) PreModuleRun() {
 func (c *ConfigCenter) ModuleRun() {
 	logrus.Info("module run")
 	c.s.Run()
+}
+
+func (c *ConfigCenter) Type() interface{} {
+	return (*feature_configcenter.Feature)(nil)
+}
+
+func (c *ConfigCenter) HelloWorld() {
+	logrus.Info("hello World !")
 }

@@ -156,3 +156,7 @@ func (l *loggerModule) reloadSettings() error {
 
 	return nil
 }
+
+func (l *loggerModule) Type() interface{} {
+	return l
+}
