@@ -479,3 +479,11 @@ func Stop() {
 func Serv() *servctl {
 	return defaultmanager.Serv()
 }
+
+func RequireFeatures(callback interface{}) error {
+	return defaultmanager.RequireFeatures(callback)
+}
+
+func AddFeature(feature Feature) error {
+	return defaultmanager.AddFeature(feature)
+}
