@@ -22,25 +22,27 @@ type ModuleInfo struct {
 }
 
 type Manager struct {
-	modules        []*ModuleInfo
-	rootCmd        *cobra.Command
-	once           sync.Once
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	defaultModules []*ModuleInfo
-	roomCmdRun     bool
-	servctl        *servctl
-	//featureResolutions []resolution
+	modules            []*ModuleInfo
+	rootCmd            *cobra.Command
+	once               sync.Once
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	defaultModules     []*ModuleInfo
+	roomCmdRun         bool
+	servctl            *servctl
+	featureResolutions []resolution
+	features           []Feature
+	lock               sync.RWMutex
 }
 
 type IModule interface {
+	Feature
 	InitModule(ctx context.Context, m *Manager) (interface{}, error)
 	InitCommand() ([]*cobra.Command, error)
 	ConfigChanged()
 	PreModuleRun()
 	ModuleRun()
-	Type() interface{}
 }
 
 func init() {
@@ -145,6 +147,9 @@ func (m *Manager) RegisterDefaultModules() {
 }
 
 func (m *Manager) RegisterWithName(module IModule, name string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
 		return fmt.Errorf("module must be pointer")
@@ -170,6 +175,9 @@ func (m *Manager) RegisterWithName(module IModule, name string) error {
 }
 
 func (m *Manager) RegisterDefaultModuleWithName(module IModule, name string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
 	t := reflect.TypeOf(module)
 	if t.Kind() != reflect.Ptr {
 		return fmt.Errorf("module must be pointer")
@@ -308,7 +316,7 @@ type resolution struct {
 	callback interface{}
 }
 
-func getFeature(allFeatures []IModule, t reflect.Type) IModule {
+func getFeature(allFeatures []Feature, t reflect.Type) Feature {
 	for _, m := range allFeatures {
 		if reflect.TypeOf(m.Type()) == t {
 			return m
@@ -317,8 +325,8 @@ func getFeature(allFeatures []IModule, t reflect.Type) IModule {
 	return nil
 }
 
-func (r *resolution) resolve(allFeatures []IModule) (bool, error) {
-	var ms []IModule
+func (r *resolution) resolve(allFeatures []Feature) (bool, error) {
+	var ms []Feature
 	for _, d := range r.deps {
 		m := getFeature(allFeatures, d)
 		if m == nil {
@@ -361,6 +369,8 @@ func (r *resolution) resolve(allFeatures []IModule) (bool, error) {
 }
 
 func (m *Manager) RequireFeatures(callback interface{}) error {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
 	callbackType := reflect.TypeOf(callback)
 	if callbackType.Kind() != reflect.Func {
 		panic("not a function")
@@ -376,18 +386,54 @@ func (m *Manager) RequireFeatures(callback interface{}) error {
 		callback: callback,
 	}
 
-	allFeatures := make([]IModule, 0)
+	allFeatures := make([]Feature, 0)
 	for _, mi := range m.modules {
 		allFeatures = append(allFeatures, mi.module)
 	}
+
+	for _, mi := range m.defaultModules {
+		allFeatures = append(allFeatures, mi.module)
+	}
+
+	allFeatures = append(allFeatures, m.features...)
 
 	if finished, err := r.resolve(allFeatures); finished {
 		return err
 	}
 
-	//m.featureResolutions = append(m.featureResolutions, r)
+	m.featureResolutions = append(m.featureResolutions, r)
 
 	return fmt.Errorf("can't resolve all dependencies")
+}
+
+func (m *Manager) AddFeature(feature Feature) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if feature == nil {
+		return fmt.Errorf("feature is nil")
+	}
+
+	m.features = append(m.features, feature)
+
+	allFeatures := make([]Feature, 0)
+	for _, mi := range m.modules {
+		allFeatures = append(allFeatures, mi.module)
+	}
+
+	for _, mi := range m.defaultModules {
+		allFeatures = append(allFeatures, mi.module)
+	}
+
+	allFeatures = append(allFeatures, m.features...)
+
+	for _, r := range m.featureResolutions {
+		if finished, err := r.resolve(allFeatures); finished {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func Register(module IModule) error {
